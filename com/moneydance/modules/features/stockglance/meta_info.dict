@@ -1,6 +1,7 @@
 {
   "vendor" = "Jim Larus"
   "module_build" = "1"
+  "minbuild" = "1000"
   "vendor.url" = "http://your.url.here/"
   "module_name" = "Stock Glance"
   "module_desc" = "<html><body><title>Stock Glance</title><p>Home page component to display active stock prices.</p></body></html>"

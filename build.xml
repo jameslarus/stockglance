@@ -22,7 +22,7 @@ http://jakarta.apache.org/ant/index.html
 
   <path id="classpath">
     <pathelement path="../lib/extadmin.jar"/>
-    <pathelement path="../lib/moneydance.jar"/>
+    <pathelement path="../lib/moneydance-dev.jar"/>
   </path>
 
   <target name="init">
@@ -31,7 +31,7 @@ http://jakarta.apache.org/ant/index.html
   </target>   
 
   <target name="stockglance" depends="init">
-    <javac target="1.7" source="1.7" srcdir="${src}" debug="${debug}" optimize="${optimize}"
+    <javac target="1.8" source="1.8" srcdir="${src}" debug="${debug}" optimize="${optimize}"
       classpathref="classpath"  destdir="${build}"
       includes="com/moneydance/modules/features/stockglance/**"/>
 
@@ -53,7 +53,7 @@ http://jakarta.apache.org/ant/index.html
       <arg value="stockglance"/>
       <arg line="${dist}/stockglance.mxt"/>
     </java>
-    <!-- <move file="${src}/stockglance.mxt" tofile="${dist}/stockglance.mxt"/> -->
+    <move file="${src}/s-stockglance.mxt" tofile="${dist}/stockglance.mxt"/>
   </target>
 
   <target name="genkeys">

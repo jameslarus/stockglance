@@ -1,14 +1,9 @@
-package com.moneydance.modules.features.stockglanceextension;
+package com.moneydance.modules.features.stockglance;
 
-import com.moneydance.apps.md.controller.FeatureModule;
-import com.moneydance.apps.md.controller.FeatureModuleContext;
-import com.moneydance.apps.md.controller.ModuleUtil;
-import com.moneydance.apps.md.controller.UserPreferences;
-
-import com.moneydance.apps.md.model.*;
+import com.infinitekind.moneydance.model.*;
 import com.moneydance.apps.md.view.HomePageView;
 
-import java.io.*;
+import java.awt.geom.Arc2D;
 import java.util.*;
 import java.text.*;
 import java.awt.*;
@@ -18,31 +13,26 @@ import javax.swing.table.*;
 
 // Home page component to display active stock prices and returns.
 
-public class StockGlance implements HomePageView
-{
+public class StockGlance implements HomePageView {
     private JPanel tablePanel;
-    private RootAccount root;
+    private AccountBook book;
+    private currencyCallback currencyTableCallback;
 
 
     //
     // CurrencyListener Interface:
     //
-    static class currencyCallback implements CurrencyListener
-    {
+    static class currencyCallback implements CurrencyListener {
         private StockGlance thisSG;
 
-        public currencyCallback(StockGlance sg)
-        {
+        public currencyCallback(StockGlance sg) {
             thisSG = sg;
         }
 
-        public void currencyTableModified(CurrencyTable table)
-        {
+        public void currencyTableModified(CurrencyTable table) {
             thisSG.refresh();
         }
     }
-
-    private currencyCallback currencyTableCallback;
 
 
     //
@@ -50,9 +40,8 @@ public class StockGlance implements HomePageView
     //
 
     // Returns a GUI component that provides a view of the info panel for the given data file.
-    public javax.swing.JComponent getGUIView(RootAccount rootAccount)
-    {
-        root = rootAccount;
+    public javax.swing.JComponent getGUIView(AccountBook book) {
+        this.book = book;
 
         addTableToPanel(tablePanel, makeTable());
 
@@ -60,45 +49,38 @@ public class StockGlance implements HomePageView
     }
 
     // Returns a unique identifier for this view.
-    public String getID()
-    {
+    public String getID() {
         return "StockGlance";
     }
 
     // Forces a refresh of the information in the view.
-    public void refresh()
-    {
+    public void refresh() {
         tablePanel.removeAll();
         addTableToPanel(tablePanel, makeTable());
         tablePanel.invalidate();
     }
 
     // Called when the view should clean up everything.
-    public void reset()
-    {
+    public void reset() {
         tablePanel.removeAll();
-        if (root != null && currencyTableCallback != null)
-        {
-            root.getCurrencyTable().removeCurrencyListener(currencyTableCallback);
+        if (book != null && currencyTableCallback != null) {
+            book.getCurrencies().removeCurrencyListener(currencyTableCallback);
         }
     }
 
     // Sets the view as active or inactive.
-    public void setActive(boolean active)
-    {
-        if (root != null && active)
-        {
-            root.getCurrencyTable().addCurrencyListener(currencyTableCallback);
-        }
-        else if (root != null)
-        {
-            root.getCurrencyTable().removeCurrencyListener(currencyTableCallback);
+    public void setActive(boolean active) {
+        if (book != null) {
+            if (active) {
+                book.getCurrencies().addCurrencyListener(currencyTableCallback);
+            } else {
+                book.getCurrencies().removeCurrencyListener(currencyTableCallback);
+            }
         }
     }
 
     // Returns a short descriptive name of this view.
-    public String toString()
-    {
+    public String toString() {
         return "Stock Glance";
     }
 
@@ -107,79 +89,67 @@ public class StockGlance implements HomePageView
     // Implementation:
     //
 
-    public StockGlance()
-    {
-        root = null;
+    public StockGlance() {
+        System.out.println("Start of StockGlance");
+
+        book = null;
         tablePanel = new JPanel();
         currencyTableCallback = new currencyCallback(this);
     }
 
-
-    private void addTableToPanel(JPanel tablePanel, JTable table)
-    {
+    private void addTableToPanel(JPanel tablePanel, JTable table) {
         table.setFillsViewportHeight(true);
         tablePanel.setLayout(new BorderLayout());
         tablePanel.add(table.getTableHeader(), BorderLayout.NORTH);
         tablePanel.add(table, BorderLayout.CENTER);
     }
 
-    private JTable makeTable()
-    {
+    private JTable makeTable() {
         final String[] names = {"Symbol",
-                                "Stock",
-                                "Price",
-                                "Change",
-                                "Day %",
-                                "Week %",
-                                "Month %",
-                                "Year %"};
+                "Stock",
+                "Price",
+                "Change",
+                "Day %",
+                "Week %",
+                "Month %",
+                "Year %"};
         final String[] types = {"Text",
-                                "Text",
-                                "Currency",
-                                "Currency",
-                                "Percent",
-                                "Percent",
-                                "Percent",
-                                "Percent"};
+                "Text",
+                "Currency",
+                "Currency",
+                "Percent",
+                "Percent",
+                "Percent",
+                "Percent"};
 
         Vector<Object> columnNames = new Vector<Object>(Arrays.asList(names));
-        Vector<Vector<Object>> data = getTableData(root);
-        JTable table = new JTable(data, columnNames)
-            {
-                // Alternating color bands for table
-                public Component prepareRenderer(TableCellRenderer renderer, int row, int column)
-                {
-                    Component c = super.prepareRenderer(renderer, row, column);
+        Vector<Vector<Object>> data = getTableData(book);
+        JTable table = new JTable(data, columnNames) {
+            // Alternating color bands for table
+            public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
+                Component c = super.prepareRenderer(renderer, row, column);
 
-                    //  Alternate row color
-                    if (!isRowSelected(row))
-                        c.setBackground(row % 2 == 0 ? getBackground() : new Color(0xDCDCDC));
+                //  Alternate row color
+                if (!isRowSelected(row))
+                    c.setBackground(row % 2 == 0 ? getBackground() : new Color(0xDCDCDC));
 
-                    return c;
-                }
-            };
+                return c;
+            }
+        };
 
-        for (int i = 0; i < names.length; i++)
-        {
+        for (int i = 0; i < names.length; i++) {
             TableColumn col = table.getColumn(names[i]);
             DefaultTableCellRenderer renderer;
-            if (types[i] == "Text")
-            {
+            if (types[i].equals("Text")) {
                 renderer = new DefaultTableCellRenderer();
                 renderer.setHorizontalAlignment(JLabel.LEFT);
-            }
-            else if (types[i] == "Currency")
-            {
+            } else if (types[i].equals("Currency")) {
                 renderer = new CurrencyRenderer();
                 renderer.setHorizontalAlignment(JLabel.RIGHT);
-            }
-            else if (types[i] == "Percent")
-            {
+            } else if (types[i].equals("Percent")) {
                 renderer = new PercentRenderer();
                 renderer.setHorizontalAlignment(JLabel.RIGHT);
-            }
-            else
-            {
+            } else {
                 renderer = new DefaultTableCellRenderer();
             }
             col.setCellRenderer(renderer);
@@ -192,43 +162,35 @@ public class StockGlance implements HomePageView
         return table;
     }
 
-    private Vector<Vector<Object>> getTableData(RootAccount root)
-    {
-        CurrencyTable ct = root.getCurrencyTable();
-        CurrencyType[] currencies = ct.getAllCurrencies();
+    private Vector<Vector<Object>> getTableData(AccountBook book) {
+        CurrencyTable ct = book.getCurrencies();
+        java.util.List<CurrencyType> currencies = ct.getAllCurrencies();
 
         GregorianCalendar cal = new GregorianCalendar();
-        int nowdi = makeDateInt(cal.get(Calendar.YEAR),
-                                cal.get(Calendar.MONTH) + 1, // Jan == 1
-                                cal.get(Calendar.DAY_OF_MONTH));
+        int today = makeDateInt(cal.get(Calendar.YEAR),
+                cal.get(Calendar.MONTH) + 1, // Jan == 1
+                cal.get(Calendar.DAY_OF_MONTH));
         Vector<Vector<Object>> table = new Vector<Vector<Object>>();
 
-        for (int i = 0; i < currencies.length; i++)
-        {
-            CurrencyType cur = currencies[i];
-            if (!cur.getHideInUI() && cur.getCurrencyType() == CurrencyType.CURRTYPE_SECURITY)
-            {
-                int ssc = cur.getSnapshotCount();
-                if (ssc > 0
-                    && cur.getSnapshot(ssc - 1).getDateInt() > backDays(nowdi, 365)) //Has prices in last year
-                {
-                    double price = 1.0 / cur.getUserRate();//cur.getUserRateByDateInt(nowdi);
-                    double price1 = 1.0 / cur.getUserRateByDateInt(backDays(nowdi, 1));
-                    double price7 = 1.0 / cur.getUserRateByDateInt(backDays(nowdi, 7));
-                    double price30 = 1.0 / cur.getUserRateByDateInt(backDays(nowdi, 30));
-                    double price365 = 1.0 / cur.getUserRateByDateInt(backDays(nowdi, 365));
-                    Vector<Object> entry = new Vector<Object>();
-                    entry.add(cur.getTickerSymbol());
-                    entry.add(cur.getName());
-                    entry.add(price);
-                    entry.add(price-price1);
-                    entry.add((price-price1)/price1);
-                    entry.add((price-price7)/price7);
-                    entry.add((price-price30)/price30);
-                    entry.add((price-price365)/price365);
+        for (CurrencyType cur : currencies) {
+            if (!cur.getHideInUI() && cur.getCurrencyType() == CurrencyType.Type.SECURITY) {
+                Double price = priceOrNaN(cur, today, 0);
+                Double price1 = priceOrNaN(cur, today, 1);
+                Double price7 = priceOrNaN(cur, today, 7);
+                Double price30 = priceOrNaN(cur, today, 30);
+                Double price365 = priceOrNaN(cur, today, 365);
+                Vector<Object> entry = new Vector<Object>();
 
-                    table.add(entry);
-                }
+                entry.add(cur.getTickerSymbol());
+                entry.add(cur.getName());
+                entry.add(price);
+                entry.add(price - price1);
+                entry.add((price - price1) / price1);
+                entry.add((price - price7) / price7);
+                entry.add((price - price30) / price30);
+                entry.add((price - price365) / price365);
+
+                table.add(entry);
             }
         }
 
@@ -240,16 +202,14 @@ public class StockGlance implements HomePageView
     }
 
     // Date int is yyyyMMdd
-    private int makeDateInt(int year, int month, int day)
-    {
+    private int makeDateInt(int year, int month, int day) {
         return year * 10000 + month * 100 + day;
     }
 
 
     private static int[] DaysInMonth = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
-    private int backDays(int date, int delta)
-    {
+    private int backDays(int date, int delta) {
         int year = date / 10000;
         int month = (date / 100) % 100;
         int day = date % 100;
@@ -259,66 +219,75 @@ public class StockGlance implements HomePageView
             delta = delta - 365;
             year = year - 1;
         }
-        while (month > 0 && delta >= DaysInMonth[month-1])
-        {
-            delta = delta - DaysInMonth[month-1];
+        while (month > 0 && delta >= DaysInMonth[month - 1]) {
+            delta = delta - DaysInMonth[month - 1];
             month = month - 1;
         }
         day = day - delta;
         return makeDateInt(year, month, day);
     }
 
+    private Double priceOrNaN(CurrencyType cur, int today, int delta) {
+        try {
+            return 1.0 / cur.getUserRateByDateInt(backDays(today, delta));
+        } catch (ArrayIndexOutOfBoundsException e) {
+            return Double.NaN;
+        }
+    }
 
-
-    static class CurrencyRenderer extends DefaultTableCellRenderer
-    {
+    static class CurrencyRenderer extends DefaultTableCellRenderer {
         NumberFormat formatter;
-        public CurrencyRenderer() { super(); }
+
+        public CurrencyRenderer() {
+            super();
+        }
 
         public void setValue(Object value) {
-            if (formatter==null) {
+            if (formatter == null) {
                 formatter = NumberFormat.getCurrencyInstance();
                 formatter.setMinimumFractionDigits(2);
             }
             setText((value == null) ? "" : formatter.format(value));
             double num = Double.valueOf(value.toString());
-            if (num < 0.0)
-            {
+            if (num < -0.001) {
                 setForeground(Color.RED);
-            }
-            else
-            {
+            } else {
                 setForeground(Color.BLACK);
             }
         }
     }
 
-    static class PercentRenderer extends DefaultTableCellRenderer
-    {
+    static class PercentRenderer extends DefaultTableCellRenderer {
         NumberFormat formatter;
-        public PercentRenderer() { super(); }
+
+        public PercentRenderer() {
+            super();
+        }
 
         public void setValue(Object value) {
-            if (formatter==null) {
+            if (formatter == null) {
                 formatter = NumberFormat.getPercentInstance();
                 formatter.setMinimumFractionDigits(2);
             }
-            setText((value == null) ? "" : formatter.format(value));
-            double num = Double.valueOf(value.toString());
-            if (num < 0.0)
-            {
-                setForeground(Color.RED);
-            }
-            else
-            {
-                setForeground(Color.BLACK);
+            if (value == null) {
+                setText("");
+            } else if (Double.isNaN((Double)value)){
+                setText("");
+            } else {
+                setText(formatter.format(value));
+                if ((Double)value < -0.001) {
+                    setForeground(Color.RED);
+                } else {
+                    setForeground(Color.BLACK);
+                }
             }
         }
     }
 
-    static class HeaderRenderer extends DefaultTableCellRenderer
-    {
-        public HeaderRenderer() { super(); }
+    static class HeaderRenderer extends DefaultTableCellRenderer {
+        public HeaderRenderer() {
+            super();
+        }
 
         public void setValue(Object value) {
             super.setValue(value);

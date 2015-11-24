@@ -1,38 +1,39 @@
-package com.moneydance.modules.features.stockglanceextension;
+package com.moneydance.modules.features.stockglance;
 
+import com.moneydance.apps.md.controller.FeatureModule;
 import com.moneydance.apps.md.controller.FeatureModule;
 
 
-/** Home page component to display active stock prices and returns.*/
+/**
+ * Home page component to display active stock prices and returns.
+ */
 
 public class Main
-extends FeatureModule
-{
+        extends FeatureModule {
     private StockGlance glance;
 
-    public void init()
-    {
-        glance = new StockGlance();
-        getContext().registerHomePageView(this, glance);
+    public void init() {
+        try {
+            glance = new StockGlance();
+            getContext().registerHomePageView(this, glance);
+        } catch (Exception e) {
+            e.printStackTrace(System.err);
+        }
     }
 
-    public void invoke(String uri)
-    {
+    public void invoke(String uri) {
     }
 
-    public String getName() 
-    {
+    public String getName() {
         return "Stock Glance";
     }
 
-    public void cleanup()
-    {
+    public void cleanup() {
         glance.reset();
         glance = null;
     }
 
-    public void unload()
-    {
+    public void unload() {
         cleanup();
     }
 }
