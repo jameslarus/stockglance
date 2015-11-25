@@ -3,7 +3,6 @@ package com.moneydance.modules.features.stockglance;
 import com.infinitekind.moneydance.model.*;
 import com.moneydance.apps.md.view.HomePageView;
 
-import java.awt.geom.Arc2D;
 import java.util.*;
 import java.text.*;
 import java.awt.*;
@@ -42,9 +41,7 @@ public class StockGlance implements HomePageView {
     // Returns a GUI component that provides a view of the info panel for the given data file.
     public javax.swing.JComponent getGUIView(AccountBook book) {
         this.book = book;
-
         addTableToPanel(tablePanel, makeTable());
-
         return tablePanel;
     }
 
@@ -90,8 +87,6 @@ public class StockGlance implements HomePageView {
     //
 
     public StockGlance() {
-        System.out.println("Start of StockGlance");
-
         book = null;
         tablePanel = new JPanel();
         currencyTableCallback = new currencyCallback(this);
@@ -140,17 +135,25 @@ public class StockGlance implements HomePageView {
         for (int i = 0; i < names.length; i++) {
             TableColumn col = table.getColumn(names[i]);
             DefaultTableCellRenderer renderer;
-            if (types[i].equals("Text")) {
-                renderer = new DefaultTableCellRenderer();
-                renderer.setHorizontalAlignment(JLabel.LEFT);
-            } else if (types[i].equals("Currency")) {
-                renderer = new CurrencyRenderer();
-                renderer.setHorizontalAlignment(JLabel.RIGHT);
-            } else if (types[i].equals("Percent")) {
-                renderer = new PercentRenderer();
-                renderer.setHorizontalAlignment(JLabel.RIGHT);
-            } else {
-                renderer = new DefaultTableCellRenderer();
+            switch (types[i]) {
+                case "Text":
+                    renderer = new DefaultTableCellRenderer();
+                    renderer.setHorizontalAlignment(JLabel.LEFT);
+                    break;
+
+                case "Currency":
+                    renderer = new Currency2Renderer();
+                    renderer.setHorizontalAlignment(JLabel.RIGHT);
+                    break;
+
+                case "Percent":
+                    renderer = new Percent2Renderer();
+                    renderer.setHorizontalAlignment(JLabel.RIGHT);
+                    break;
+
+                default:
+                    renderer = new DefaultTableCellRenderer();
+                    break;
             }
             col.setCellRenderer(renderer);
 
@@ -206,7 +209,6 @@ public class StockGlance implements HomePageView {
         return year * 10000 + month * 100 + day;
     }
 
-
     private static int[] DaysInMonth = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
     private int backDays(int date, int delta) {
@@ -227,60 +229,51 @@ public class StockGlance implements HomePageView {
         return makeDateInt(year, month, day);
     }
 
-    private Double priceOrNaN(CurrencyType cur, int today, int delta) {
+    private Double priceOrNaN(CurrencyType cur, int asOfDate, int delta) {
         try {
-            return 1.0 / cur.getUserRateByDateInt(backDays(today, delta));
+            if (cur.getEffectiveDateInt() <= (asOfDate - delta)) {
+                return 1.0 / cur.getUserRateByDateInt(backDays(asOfDate, delta));
+            } else {
+                return Double.NaN;
+            }
         } catch (ArrayIndexOutOfBoundsException e) {
             return Double.NaN;
         }
     }
 
-    static class CurrencyRenderer extends DefaultTableCellRenderer {
-        NumberFormat formatter;
+    // Render a currency with 2 digits after the decimal point. NaN is empty cell.
+    // Negative values are red.
+    static class Currency2Renderer extends DefaultTableCellRenderer {
+        protected NumberFormat formatter;
 
-        public CurrencyRenderer() {
+        public Currency2Renderer() {
             super();
+            formatter = NumberFormat.getCurrencyInstance();
+            formatter.setMinimumFractionDigits(2);
         }
 
         public void setValue(Object value) {
-            if (formatter == null) {
-                formatter = NumberFormat.getCurrencyInstance();
-                formatter.setMinimumFractionDigits(2);
-            }
-            setText((value == null) ? "" : formatter.format(value));
-            double num = Double.valueOf(value.toString());
-            if (num < -0.001) {
-                setForeground(Color.RED);
-            } else {
-                setForeground(Color.BLACK);
-            }
-        }
-    }
-
-    static class PercentRenderer extends DefaultTableCellRenderer {
-        NumberFormat formatter;
-
-        public PercentRenderer() {
-            super();
-        }
-
-        public void setValue(Object value) {
-            if (formatter == null) {
-                formatter = NumberFormat.getPercentInstance();
-                formatter.setMinimumFractionDigits(2);
-            }
             if (value == null) {
                 setText("");
-            } else if (Double.isNaN((Double)value)){
+            } else if (Double.isNaN((Double) value)) {
                 setText("");
             } else {
                 setText(formatter.format(value));
-                if ((Double)value < -0.001) {
+                if ((Double) value < -0.001) {
                     setForeground(Color.RED);
                 } else {
                     setForeground(Color.BLACK);
                 }
             }
+        }
+    }
+
+    // Render a percentage with 2 digits after the decimal point. Conventions as Currency2Renderer
+    static class Percent2Renderer extends Currency2Renderer {
+        public Percent2Renderer() {
+            super();
+            formatter = NumberFormat.getPercentInstance();
+            formatter.setMinimumFractionDigits(2);
         }
     }
 

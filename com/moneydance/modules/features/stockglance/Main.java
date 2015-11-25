@@ -29,7 +29,6 @@ public class Main
     }
 
     public void cleanup() {
-        glance.reset();
         glance = null;
     }
 
