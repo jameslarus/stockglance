@@ -8,8 +8,7 @@ import com.moneydance.apps.md.controller.FeatureModule;
  * Home page component to display active stock prices and returns.
  */
 
-public class Main
-        extends FeatureModule {
+public class Main extends FeatureModule {
     private StockGlance glance;
 
     public void init() {
@@ -22,6 +21,7 @@ public class Main
     }
 
     public void invoke(String uri) {
+        glance.refresh();
     }
 
     public String getName() {
@@ -29,6 +29,7 @@ public class Main
     }
 
     public void cleanup() {
+        glance.reset();
         glance = null;
     }
 

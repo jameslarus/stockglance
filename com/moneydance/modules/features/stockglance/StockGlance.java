@@ -52,14 +52,16 @@ public class StockGlance implements HomePageView {
 
     // Forces a refresh of the information in the view.
     public void refresh() {
-        tablePanel.removeAll();
         addTableToPanel(tablePanel, makeTable());
-        tablePanel.invalidate();
+        tablePanel.revalidate();
+        tablePanel.repaint();
     }
 
     // Called when the view should clean up everything.
     public void reset() {
         tablePanel.removeAll();
+        tablePanel.revalidate();
+        tablePanel.repaint();
         if (book != null && currencyTableCallback != null) {
             book.getCurrencies().removeCurrencyListener(currencyTableCallback);
         }
@@ -117,8 +119,8 @@ public class StockGlance implements HomePageView {
                 "Percent",
                 "Percent"};
 
-        Vector<Object> columnNames = new Vector<Object>(Arrays.asList(names));
-        Vector<Vector<Object>> data = getTableData(book);
+        Vector<> columnNames = new Vector<>(Arrays.asList(names));
+        Vector<Vector<>> data = getTableData(book);
         JTable table = new JTable(data, columnNames) {
             // Alternating color bands for table
             public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
@@ -173,7 +175,7 @@ public class StockGlance implements HomePageView {
         int today = makeDateInt(cal.get(Calendar.YEAR),
                 cal.get(Calendar.MONTH) + 1, // Jan == 1
                 cal.get(Calendar.DAY_OF_MONTH));
-        Vector<Vector<Object>> table = new Vector<Vector<Object>>();
+        Vector<Vector<Object>> table = new Vector<>();
 
         for (CurrencyType cur : currencies) {
             if (!cur.getHideInUI() && cur.getCurrencyType() == CurrencyType.Type.SECURITY) {
@@ -182,7 +184,7 @@ public class StockGlance implements HomePageView {
                 Double price7 = priceOrNaN(cur, today, 7);
                 Double price30 = priceOrNaN(cur, today, 30);
                 Double price365 = priceOrNaN(cur, today, 365);
-                Vector<Object> entry = new Vector<Object>();
+                Vector<Object> entry = new Vector<>();
 
                 entry.add(cur.getTickerSymbol());
                 entry.add(cur.getName());
