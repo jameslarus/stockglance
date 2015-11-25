@@ -118,18 +118,30 @@ public class StockGlance implements HomePageView {
                 "Percent",
                 "Percent",
                 "Percent"};
+        final Class[] classes = {String.class,
+                String.class,
+                Double.class,
+                Double.class,
+                Double.class,
+                Double.class,
+                Double.class,
+                Double.class};
 
-        Vector<> columnNames = new Vector<>(Arrays.asList(names));
-        Vector<Vector<>> data = getTableData(book);
-        JTable table = new JTable(data, columnNames) {
+        Vector<String> columnNames = new Vector<>(Arrays.asList(names));
+        Vector<Vector<Object>> data = getTableData(book);
+
+        DefaultTableModel sortableTableModel = new DefaultTableModel(data, columnNames) {
+            public Class<?> getColumnClass(int col) {
+                return classes[col];
+            }
+        };
+
+        JTable table = new JTable(sortableTableModel) {
             // Alternating color bands for table
             public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
                 Component c = super.prepareRenderer(renderer, row, column);
-
-                //  Alternate row color
-                if (!isRowSelected(row))
+                if (!isRowSelected(row)) //  Alternate row color
                     c.setBackground(row % 2 == 0 ? getBackground() : new Color(0xDCDCDC));
-
                 return c;
             }
         };
@@ -163,6 +175,8 @@ public class StockGlance implements HomePageView {
             renderer.setHorizontalAlignment(JLabel.CENTER);
             col.setHeaderRenderer(renderer);
         }
+
+        table.setAutoCreateRowSorter(true);
 
         return table;
     }
