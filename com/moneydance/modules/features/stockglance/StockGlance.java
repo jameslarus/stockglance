@@ -177,6 +177,7 @@ public class StockGlance implements HomePageView {
         }
 
         table.setAutoCreateRowSorter(true);
+        table.getRowSorter().toggleSortOrder(0); // Default is sort by symbol
 
         return table;
     }
@@ -220,6 +221,19 @@ public class StockGlance implements HomePageView {
         return table;
     }
 
+    private Double priceOrNaN(CurrencyType cur, int date, int delta) {
+        try {
+            int backDate = backDays(date, delta);
+            if (snapshotExistsForDate(cur, backDate))  {
+                return 1.0 / cur.getUserRateByDateInt(backDate);
+            } else {
+                return Double.NaN;
+            }
+        } catch (ArrayIndexOutOfBoundsException e) {
+            return Double.NaN;
+        }
+    }
+
     // Date int is yyyyMMdd
     private int makeDateInt(int year, int month, int day) {
         return year * 10000 + month * 100 + day;
@@ -231,11 +245,13 @@ public class StockGlance implements HomePageView {
         int year = date / 10000;
         int month = (date / 100) % 100;
         int day = date % 100;
+        int daysPerYear = ((year % 4 == 0) && (year % 100 != 0)) ? 366 : 365;
 
-        while (delta >= 365)   // BUG: leap year
+        while (delta >= daysPerYear)
         {
-            delta = delta - 365;
+            delta = delta - daysPerYear;
             year = year - 1;
+            daysPerYear = ((year % 4 == 0) && (year % 100 != 0)) ? 366 : 365;
         }
         while (month > 0 && delta >= DaysInMonth[month - 1]) {
             delta = delta - DaysInMonth[month - 1];
@@ -245,16 +261,13 @@ public class StockGlance implements HomePageView {
         return makeDateInt(year, month, day);
     }
 
-    private Double priceOrNaN(CurrencyType cur, int asOfDate, int delta) {
-        try {
-            if (cur.getEffectiveDateInt() <= (asOfDate - delta)) {
-                return 1.0 / cur.getUserRateByDateInt(backDays(asOfDate, delta));
-            } else {
-                return Double.NaN;
+    private boolean snapshotExistsForDate(CurrencyType cur, int date) {
+        for (CurrencySnapshot snap : cur.getSnapshots()) {
+            if (snap.getDateInt() <= date) {
+                return true;
             }
-        } catch (ArrayIndexOutOfBoundsException e) {
-            return Double.NaN;
         }
+        return false;
     }
 
     // Render a currency with 2 digits after the decimal point. NaN is empty cell.
