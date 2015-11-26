@@ -267,7 +267,7 @@ public class StockGlance implements HomePageView {
                 return true;
             }
         }
-        return false;
+        return cur.getSnapshots().isEmpty(); // If no snapshots, use fixed rate; otherwise didn't find snapshot
     }
 
     // Render a currency with 2 digits after the decimal point. NaN is empty cell.
