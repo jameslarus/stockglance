@@ -6,6 +6,7 @@ import com.moneydance.apps.md.view.HomePageView;
 import java.util.*;
 import java.text.*;
 import java.awt.*;
+import java.util.List;
 import javax.swing.*;
 import javax.swing.table.*;
 
@@ -101,32 +102,11 @@ public class StockGlance implements HomePageView {
         tablePanel.add(table, BorderLayout.CENTER);
     }
 
-    private JTable makeTable() {
-        final String[] names = {"Symbol",
-                "Stock",
-                "Price",
-                "Change",
-                "Day %",
-                "Week %",
-                "Month %",
-                "Year %"};
-        final String[] types = {"Text",
-                "Text",
-                "Currency",
-                "Currency",
-                "Percent",
-                "Percent",
-                "Percent",
-                "Percent"};
-        final Class[] classes = {String.class,
-                String.class,
-                Double.class,
-                Double.class,
-                Double.class,
-                Double.class,
-                Double.class,
-                Double.class};
+    private final String[] names =  {"Symbol",     "Stock",      "Price",      "Change",     "Day%",       "Week%",      "Month%",     "Year%"};
+    private final String[] types =  {"Text",       "Text",       "Currency",   "Currency",   "Percent",    "Percent",    "Percent",    "Percent"};
+    private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class};
 
+    private JTable makeTable() {
         Vector<String> columnNames = new Vector<>(Arrays.asList(names));
         Vector<Vector<Object>> data = getTableData(book);
 
@@ -262,12 +242,13 @@ public class StockGlance implements HomePageView {
     }
 
     private boolean snapshotExistsForDate(CurrencyType cur, int date) {
-        for (CurrencySnapshot snap : cur.getSnapshots()) {
+        List<CurrencySnapshot> snapshots = cur.getSnapshots();
+        for (CurrencySnapshot snap : snapshots) {
             if (snap.getDateInt() <= date) {
                 return true;
             }
         }
-        return cur.getSnapshots().isEmpty(); // If no snapshots, use fixed rate; otherwise didn't find snapshot
+        return snapshots.isEmpty(); // If no snapshots, use fixed rate; otherwise didn't find snapshot
     }
 
     // Render a currency with 2 digits after the decimal point. NaN is empty cell.
