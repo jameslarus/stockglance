@@ -211,18 +211,21 @@ public class StockGlance implements HomePageView {
                 Double price7 = priceOrNaN(cur, today, 7);
                 Double price30 = priceOrNaN(cur, today, 30);
                 Double price365 = priceOrNaN(cur, today, 365);
-                Vector<Object> entry = new Vector<>();
 
-                entry.add(cur.getTickerSymbol());
-                entry.add(cur.getName());
-                entry.add(price);
-                entry.add(price - price1);
-                entry.add((price - price1) / price1);
-                entry.add((price - price7) / price7);
-                entry.add((price - price30) / price30);
-                entry.add((price - price365) / price365);
+                if (!Double.isNaN(price) && (!Double.isNaN(price1) || !Double.isNaN(price7)
+                        || !Double.isNaN(price30) || !Double.isNaN(price365))) {
+                    Vector<Object> entry = new Vector<>();
+                    entry.add(cur.getTickerSymbol());
+                    entry.add(cur.getName());
+                    entry.add(price);
+                    entry.add(price - price1);
+                    entry.add((price - price1) / price1);
+                    entry.add((price - price7) / price7);
+                    entry.add((price - price30) / price30);
+                    entry.add((price - price365) / price365);
 
-                table.add(entry);
+                    table.add(entry);
+                }
             }
         }
 
@@ -276,7 +279,7 @@ public class StockGlance implements HomePageView {
     private boolean snapshotExistsForDate(CurrencyType cur, int date) {
         List<CurrencySnapshot> snapshots = cur.getSnapshots();
         for (CurrencySnapshot snap : snapshots) {
-            if (snap.getDateInt() <= date) {
+            if ((date - snap.getDateInt()) <= 7) { // within a week
                 return true;
             }
         }
