@@ -35,6 +35,7 @@ package com.moneydance.modules.features.stockglance;
 import com.infinitekind.moneydance.model.*;
 import com.moneydance.apps.md.view.HomePageView;
 
+import java.math.RoundingMode;
 import java.util.*;
 import java.text.*;
 import java.awt.*;
@@ -134,7 +135,7 @@ public class StockGlance implements HomePageView {
         tablePanel.add(table, BorderLayout.CENTER);
     }
 
-    private final String[] names =  {"Symbol",     "Stock",      "Price",      "Change",     "Day%",       "Week%",      "Month%",     "Year%"};
+    private final String[] names =  {"Symbol",     "Stock",      "Price",      "Change",     "% Day",      "% 7Day",     "% 30Day",    "% 365Day"};
     private final String[] types =  {"Text",       "Text",       "Currency",   "Currency",   "Percent",    "Percent",    "Percent",    "Percent"};
     private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class};
 
@@ -184,7 +185,7 @@ public class StockGlance implements HomePageView {
             col.setCellRenderer(renderer);
 
             renderer = new HeaderRenderer();
-            renderer.setHorizontalAlignment(JLabel.CENTER);
+            renderer.setHorizontalAlignment(JLabel.RIGHT);
             col.setHeaderRenderer(renderer);
         }
 
@@ -239,7 +240,7 @@ public class StockGlance implements HomePageView {
     private Double priceOrNaN(CurrencyType cur, int date, int delta) {
         try {
             int backDate = backDays(date, delta);
-            if (snapshotExistsForDate(cur, backDate))  {
+            if (haveSnapshotWithinWeek(cur, backDate))  {
                 return 1.0 / cur.getUserRateByDateInt(backDate);
             } else {
                 return Double.NaN;
@@ -276,7 +277,9 @@ public class StockGlance implements HomePageView {
         return makeDateInt(year, month, day);
     }
 
-    private boolean snapshotExistsForDate(CurrencyType cur, int date) {
+    // MD function getRawRateByDateInt(int dt) returns last known value, even if wildly out of date.
+    // Return true if the snapshots contain a rate within a week before the date.
+    private boolean haveSnapshotWithinWeek(CurrencyType cur, int date) {
         List<CurrencySnapshot> snapshots = cur.getSnapshots();
         for (CurrencySnapshot snap : snapshots) {
             if ((date - snap.getDateInt()) <= 7) { // within a week
@@ -295,16 +298,24 @@ public class StockGlance implements HomePageView {
             super();
             formatter = NumberFormat.getCurrencyInstance();
             formatter.setMinimumFractionDigits(2);
+            formatter.setRoundingMode(RoundingMode.HALF_EVEN);
+        }
+
+        protected boolean isZero(Double value) {
+            return Math.abs(value) < 0.01;
         }
 
         public void setValue(Object value) {
             if (value == null) {
                 setText("");
-            } else if (Double.isNaN((Double) value)) {
+            } else if (Double.isNaN((Double)value)) {
                 setText("");
             } else {
+                if (isZero((Double)value)) {
+                    value = 0.0;
+                }
                 setText(formatter.format(value));
-                if ((Double) value < -0.001) {
+                if ((Double) value < 0.0) {
                     setForeground(Color.RED);
                 } else {
                     setForeground(Color.BLACK);
@@ -319,6 +330,11 @@ public class StockGlance implements HomePageView {
             super();
             formatter = NumberFormat.getPercentInstance();
             formatter.setMinimumFractionDigits(2);
+            formatter.setRoundingMode(RoundingMode.HALF_EVEN);
+        }
+
+        @Override protected boolean isZero(Double value) {
+            return Math.abs(value) < 0.0001;
         }
     }
 
