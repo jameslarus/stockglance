@@ -6,6 +6,7 @@ http://jakarta.apache.org/ant/index.html
 <project name="stockglance" default="all" basedir=".">
   <property name="version"  value="1.0"/>
   <property name="src" value="."/>
+  <property file="${src}/user.properties"/>
   <property name="build" value="./build"/>
   <property name="privkeyfile" value="${src}/priv_key"/>
   <property name="pubkeyfile" value="${src}/pub_key"/>
