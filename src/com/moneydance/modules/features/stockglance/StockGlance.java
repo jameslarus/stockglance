@@ -34,6 +34,7 @@ package com.moneydance.modules.features.stockglance;
 
 import com.infinitekind.moneydance.model.*;
 import com.moneydance.apps.md.view.HomePageView;
+import com.moneydance.awt.CollapsibleRefresher;
 
 import java.math.RoundingMode;
 import java.util.*;
@@ -84,13 +85,23 @@ public class StockGlance implements HomePageView {
         return "StockGlance";
     }
 
-    // Forces a refresh of the information in the view.
+
+    private CollapsibleRefresher refresher = new CollapsibleRefresher(new Runnable() {
+        @Override
+        public void run() { reallyRefresh(); }
+    });
+
     public void refresh() {
+        refresher.enqueueRefresh();
+    }
+
+    // Forces a refresh of the information in the view.
+    public void reallyRefresh() {
         addTableToPanel(tablePanel, makeTable());
         tablePanel.revalidate();
         tablePanel.repaint();
     }
-
+  
     // Called when the view should clean up everything.
     public void reset() {
         tablePanel.removeAll();
@@ -157,6 +168,8 @@ public class StockGlance implements HomePageView {
                     c.setBackground(row % 2 == 0 ? getBackground() : new Color(0xDCDCDC));
                 return c;
             }
+          
+            public boolean isCellEditable(int row, int column) { return false; }
         };
 
         for (int i = 0; i < names.length; i++) {
@@ -183,7 +196,7 @@ public class StockGlance implements HomePageView {
                     break;
             }
             col.setCellRenderer(renderer);
-
+            
             renderer = new HeaderRenderer();
             renderer.setHorizontalAlignment(JLabel.RIGHT);
             col.setHeaderRenderer(renderer);
@@ -230,9 +243,8 @@ public class StockGlance implements HomePageView {
             }
         }
 
-        // BUG: This causes Moneydance to hang when adding a stock price in History tab of Securities Detail Window
         // Add callback to refresh table when stock's price changes.
-        //ct.addCurrencyListener(currencyTableCallback);
+        ct.addCurrencyListener(currencyTableCallback);
 
         return table;
     }
