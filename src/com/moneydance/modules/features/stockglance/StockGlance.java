@@ -48,7 +48,7 @@ import javax.swing.table.*;
 // Home page component to display active stock prices and returns.
 
 public class StockGlance implements HomePageView {
-    private JPanel tablePanel;
+    private JScrollPane tablePane;
     private AccountBook book;
     private currencyCallback currencyTableCallback;
 
@@ -73,11 +73,11 @@ public class StockGlance implements HomePageView {
     // HomePageView interface:
     //
 
-    // Returns a GUI component that provides a view of the info panel for the given data file.
+    // Returns a GUI component that provides a view of the info pane for the given data file.
     public javax.swing.JComponent getGUIView(AccountBook book) {
         this.book = book;
-        addTableToPanel(tablePanel, makeTable());
-        return tablePanel;
+        tablePane = new JScrollPane(makeTable());
+        return tablePane;
     }
 
     // Returns a unique identifier for this view.
@@ -97,16 +97,15 @@ public class StockGlance implements HomePageView {
 
     // Forces a refresh of the information in the view.
     private void reallyRefresh() {
-        addTableToPanel(tablePanel, makeTable());
-        tablePanel.revalidate();
-        tablePanel.repaint();
+        tablePane.revalidate();
+        tablePane.repaint();
     }
   
     // Called when the view should clean up everything.
     public void reset() {
-        tablePanel.removeAll();
-        tablePanel.revalidate();
-        tablePanel.repaint();
+        tablePane.removeAll();
+        tablePane.revalidate();
+        tablePane.repaint();
         if (book != null && currencyTableCallback != null) {
             book.getCurrencies().removeCurrencyListener(currencyTableCallback);
         }
@@ -134,17 +133,9 @@ public class StockGlance implements HomePageView {
     //
 
     public StockGlance() {
-        book = null;
-        tablePanel = new JPanel();
         currencyTableCallback = new currencyCallback(this);
     }
 
-    private void addTableToPanel(JPanel tablePanel, JTable table) {
-        table.setFillsViewportHeight(true);
-        tablePanel.setLayout(new BorderLayout());
-        tablePanel.add(table.getTableHeader(), BorderLayout.NORTH);
-        tablePanel.add(table, BorderLayout.CENTER);
-    }
 
     // Per column metadata
     private final String[] names =  {"Symbol",     "Stock",      "Price",      "Change",     "% Day",      "% 7Day",     "% 30Day",    "% 365Day"};
@@ -213,7 +204,7 @@ public class StockGlance implements HomePageView {
 
         table.setAutoCreateRowSorter(true);
         table.getRowSorter().toggleSortOrder(0); // Default is to sort by symbol
-
+        table.setFillsViewportHeight(true);
         return table;
     }
 
