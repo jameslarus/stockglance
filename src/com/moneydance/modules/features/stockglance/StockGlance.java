@@ -56,7 +56,7 @@ public class StockGlance implements HomePageView {
     //
     // CurrencyListener Interface:
     //
-    static class currencyCallback implements CurrencyListener {
+    static private class currencyCallback implements CurrencyListener {
         private StockGlance thisSG;
 
         public currencyCallback(StockGlance sg) {
@@ -96,7 +96,7 @@ public class StockGlance implements HomePageView {
     }
 
     // Forces a refresh of the information in the view.
-    public void reallyRefresh() {
+    private void reallyRefresh() {
         addTableToPanel(tablePanel, makeTable());
         tablePanel.revalidate();
         tablePanel.repaint();
@@ -146,9 +146,13 @@ public class StockGlance implements HomePageView {
         tablePanel.add(table, BorderLayout.CENTER);
     }
 
+    // Per column metadata
     private final String[] names =  {"Symbol",     "Stock",      "Price",      "Change",     "% Day",      "% 7Day",     "% 30Day",    "% 365Day"};
     private final String[] types =  {"Text",       "Text",       "Currency",   "Currency",   "Percent",    "Percent",    "Percent",    "Percent"};
     private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class};
+
+    // Per row metadata
+    private Vector<CurrencyType> securityCurrencies = new Vector<>(); // Type of security in each row
 
     private JTable makeTable() {
         Vector<String> columnNames = new Vector<>(Arrays.asList(names));
@@ -170,47 +174,52 @@ public class StockGlance implements HomePageView {
             }
           
             public boolean isCellEditable(int row, int column) { return false; }
+
+            // Rendering depends on row (i.e. security's currency) as well as column
+            public TableCellRenderer getCellRenderer(int row, int column) {
+                DefaultTableCellRenderer renderer;
+                switch (types[column]) {
+                    case "Text":
+                        renderer = new DefaultTableCellRenderer();
+                        renderer.setHorizontalAlignment(JLabel.LEFT);
+                        break;
+
+                    case "Currency":
+                        CurrencyType security = securityCurrencies.get(row);
+                        CurrencyTable table = security.getTable();
+                        CurrencyType curr = table.getBaseType();
+                        renderer = new Currency2Renderer(curr.getPrefix()); // Currency symbol
+                        renderer.setHorizontalAlignment(JLabel.RIGHT);
+                        break;
+
+                    case "Percent":
+                        renderer = new Percent2Renderer();
+                        renderer.setHorizontalAlignment(JLabel.RIGHT);
+                        break;
+
+                    default:
+                        throw new UnsupportedOperationException();
+                }
+                return renderer;
+            }
         };
 
-        for (int i = 0; i < names.length; i++) {
-            TableColumn col = table.getColumn(names[i]);
-            DefaultTableCellRenderer renderer;
-            switch (types[i]) {
-                case "Text":
-                    renderer = new DefaultTableCellRenderer();
-                    renderer.setHorizontalAlignment(JLabel.LEFT);
-                    break;
-
-                case "Currency":
-                    renderer = new Currency2Renderer();
-                    renderer.setHorizontalAlignment(JLabel.RIGHT);
-                    break;
-
-                case "Percent":
-                    renderer = new Percent2Renderer();
-                    renderer.setHorizontalAlignment(JLabel.RIGHT);
-                    break;
-
-                default:
-                    renderer = new DefaultTableCellRenderer();
-                    break;
-            }
-            col.setCellRenderer(renderer);
-            
-            renderer = new HeaderRenderer();
-            renderer.setHorizontalAlignment(JLabel.RIGHT);
+        for (String name: names) {
+            TableColumn col = table.getColumn(name);
+            HeaderRenderer renderer = new HeaderRenderer();
+            renderer.setHorizontalAlignment(JLabel.CENTER);
             col.setHeaderRenderer(renderer);
         }
 
         table.setAutoCreateRowSorter(true);
-        table.getRowSorter().toggleSortOrder(0); // Default is sort by symbol
+        table.getRowSorter().toggleSortOrder(0); // Default is to sort by symbol
 
         return table;
     }
 
     private Vector<Vector<Object>> getTableData(AccountBook book) {
         CurrencyTable ct = book.getCurrencies();
-        java.util.List<CurrencyType> currencies = ct.getAllCurrencies();
+        java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
 
         GregorianCalendar cal = new GregorianCalendar();
         int today = makeDateInt(cal.get(Calendar.YEAR),
@@ -218,7 +227,7 @@ public class StockGlance implements HomePageView {
                 cal.get(Calendar.DAY_OF_MONTH));
         Vector<Vector<Object>> table = new Vector<>();
 
-        for (CurrencyType cur : currencies) {
+        for (CurrencyType cur : allCurrencies) {
             if (!cur.getHideInUI() && cur.getCurrencyType() == CurrencyType.Type.SECURITY) {
                 Double price = priceOrNaN(cur, today, 0);
                 Double price1 = priceOrNaN(cur, today, 1);
@@ -239,6 +248,7 @@ public class StockGlance implements HomePageView {
                     entry.add((price - price365) / price365);
 
                     table.add(entry);
+                    securityCurrencies.add(cur);
                 }
             }
         }
@@ -262,7 +272,7 @@ public class StockGlance implements HomePageView {
         }
     }
 
-    // Date int is yyyyMMdd
+    // Date int is yyyymmdd
     private int makeDateInt(int year, int month, int day) {
         return year * 10000 + month * 100 + day;
     }
@@ -305,10 +315,12 @@ public class StockGlance implements HomePageView {
     // Negative values are red.
     static class Currency2Renderer extends DefaultTableCellRenderer {
         protected NumberFormat formatter;
+        private String prefix;
 
-        public Currency2Renderer() {
+        public Currency2Renderer(String prefix) {
             super();
-            formatter = NumberFormat.getCurrencyInstance();
+            this.prefix = prefix;
+            formatter = NumberFormat.getNumberInstance();
             formatter.setMinimumFractionDigits(2);
             formatter.setRoundingMode(RoundingMode.HALF_EVEN);
         }
@@ -326,7 +338,7 @@ public class StockGlance implements HomePageView {
                 if (isZero((Double)value)) {
                     value = 0.0;
                 }
-                setText(formatter.format(value));
+                setText(prefix + formatter.format(value));
                 if ((Double) value < 0.0) {
                     setForeground(Color.RED);
                 } else {
@@ -337,9 +349,9 @@ public class StockGlance implements HomePageView {
     }
 
     // Render a percentage with 2 digits after the decimal point. Conventions as Currency2Renderer
-    static class Percent2Renderer extends Currency2Renderer {
+    static private class Percent2Renderer extends Currency2Renderer {
         public Percent2Renderer() {
-            super();
+            super("");
             formatter = NumberFormat.getPercentInstance();
             formatter.setMinimumFractionDigits(2);
             formatter.setRoundingMode(RoundingMode.HALF_EVEN);
@@ -350,7 +362,7 @@ public class StockGlance implements HomePageView {
         }
     }
 
-    static class HeaderRenderer extends DefaultTableCellRenderer {
+    static private class HeaderRenderer extends DefaultTableCellRenderer {
         public HeaderRenderer() {
             super();
         }
