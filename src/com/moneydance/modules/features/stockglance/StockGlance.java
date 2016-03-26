@@ -121,9 +121,9 @@ public class StockGlance implements HomePageView {
 
 
     // Per column metadata
-    private final String[] names =  {"Symbol",     "Stock",      "Price",      "Change",     "% Day",      "% 7Day",     "% 30Day",    "% 365Day"};
-    private final String[] types =  {"Text",       "Text",       "Currency",   "Currency",   "Percent",    "Percent",    "Percent",    "Percent"};
-    private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class};
+    private final String[] names =  {"Symbol",     "Stock",      "Price",      "Change",     "Balance",     "% Day",      "% 7Day",     "% 30Day",    "% 365Day"};
+    private final String[] types =  {"Text",       "Text",       "Currency2",  "Currency2",  "Currency0",    "Percent",    "Percent",    "Percent",    "Percent"};
+    private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class,  Double.class, Double.class, Double.class, Double.class};
 
     // Per row metadata
     private Vector<CurrencyType> securityCurrencies = new Vector<>(); // Type of security in each row
@@ -133,23 +133,33 @@ public class StockGlance implements HomePageView {
         Vector<Vector<Object>> data = getTableData(book);
 
         DefaultTableModel sortableTableModel = new DefaultTableModel(data, columnNames) {
+            @Override
             public Class<?> getColumnClass(int col) {
                 return classes[col];
             }
         };
 
         JTable table = new JTable(sortableTableModel) {
-            // Alternating color bands for table
+            @Override
             public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
                 Component c = super.prepareRenderer(renderer, row, column);
-                if (!isRowSelected(row)) //  Alternate row color
+                // Alternating row color bands
+                if (!isRowSelected(row))
                     c.setBackground(row % 2 == 0 ? getBackground() : new Color(0xDCDCDC));
+                // Balance needs to be wider than other columns
+                if (types[column].equals("Currency0")) {
+                    int rendererWidth = c.getPreferredSize().width;
+                    TableColumn tableColumn = getColumnModel().getColumn(column);
+                    tableColumn.setMinWidth(Math.max(rendererWidth + getIntercellSpacing().width, tableColumn.getMinWidth()));
+                }
                 return c;
             }
-          
+
+            @Override
             public boolean isCellEditable(int row, int column) { return false; }
 
             // Rendering depends on row (i.e. security's currency) as well as column
+            @Override
             public TableCellRenderer getCellRenderer(int row, int column) {
                 DefaultTableCellRenderer renderer;
                 switch (types[column]) {
@@ -158,16 +168,17 @@ public class StockGlance implements HomePageView {
                         renderer.setHorizontalAlignment(JLabel.LEFT);
                         break;
 
-                    case "Currency":
+                    case "Currency0":
+                    case "Currency2":
                         CurrencyType security = securityCurrencies.get(row);
                         CurrencyTable table = security.getTable();
                         CurrencyType curr = table.getBaseType();
-                        renderer = new Currency2Renderer(curr.getPrefix()); // Currency symbol
+                        renderer = new CurrencyRenderer(curr.getPrefix(), types[column].equals("Currency0") ? 0 : 2); // Currency symbol
                         renderer.setHorizontalAlignment(JLabel.RIGHT);
                         break;
 
                     case "Percent":
-                        renderer = new Percent2Renderer();
+                        renderer = new PercentRenderer();
                         renderer.setHorizontalAlignment(JLabel.RIGHT);
                         break;
 
@@ -201,6 +212,9 @@ public class StockGlance implements HomePageView {
                 cal.get(Calendar.DAY_OF_MONTH));
         Vector<Vector<Object>> table = new Vector<>();
 
+        HashMap<CurrencyType, Long> balances = sumBalancesByCurrency(book);
+        Double totalBalance = 0.0;
+
         for (CurrencyType curr : allCurrencies) {
             if (!curr.getHideInUI() && curr.getCurrencyType() == CurrencyType.Type.SECURITY) {
                 Double price = priceOrNaN(curr, today, 0);
@@ -212,10 +226,15 @@ public class StockGlance implements HomePageView {
                 if (!Double.isNaN(price) && (!Double.isNaN(price1) || !Double.isNaN(price7)
                         || !Double.isNaN(price30) || !Double.isNaN(price365))) {
                     Vector<Object> entry = new Vector<>();
+                    Long bal = balances.get(curr);
+                    Double balance = bal / 10000.0 * price;
+                    totalBalance += balance;
+
                     entry.add(curr.getTickerSymbol());
                     entry.add(curr.getName());
                     entry.add(price);
                     entry.add(price - price1);
+                    entry.add(balance);
                     entry.add((price - price1) / price1);
                     entry.add((price - price7) / price7);
                     entry.add((price - price30) / price30);
@@ -226,6 +245,12 @@ public class StockGlance implements HomePageView {
                 }
             }
         }
+        Vector<Object> entry = new Vector<>();
+        entry.add("\u03A3"); // Sigma (sorts after all letters in stock names)
+        entry.add(null);entry.add(null); entry.add(null);
+        entry.add(totalBalance);
+        entry.add(null); entry.add(null); entry.add(null); entry.add(null);
+        table.add(entry);
 
         // Add callback to refresh table when stock's price changes.
         ct.addCurrencyListener(currencyTableCallback);
@@ -285,6 +310,17 @@ public class StockGlance implements HomePageView {
         return snapshots.isEmpty(); // If no snapshots, use fixed rate; otherwise didn't find snapshot
     }
 
+    private HashMap<CurrencyType, Long> sumBalancesByCurrency(AccountBook book) {
+        HashMap<CurrencyType, Long> totals = new HashMap<>();
+        for (Account acct : AccountUtil.allMatchesForSearch(book.getRootAccount(), AcctFilter.ALL_ACCOUNTS_FILTER)) {
+            CurrencyType curr = acct.getCurrencyType();
+            Long total = totals.get(curr);
+            total = ((total == null) ? 0L : total) + acct.getCurrentBalance();
+            totals.put(curr, total);
+        }
+        return totals;
+    }
+
     //
     // Private classes:
     //
@@ -302,17 +338,18 @@ public class StockGlance implements HomePageView {
         }
     }
 
-    // Render a currency with 2 digits after the decimal point. NaN is empty cell.
+    // Render a currency with given number of fractional digits. NaN or null is an empty cell.
     // Negative values are red.
-    static class Currency2Renderer extends DefaultTableCellRenderer {
+    static class CurrencyRenderer extends DefaultTableCellRenderer {
         protected NumberFormat formatter;
         private String prefix;
 
-        public Currency2Renderer(String prefix) {
+        public CurrencyRenderer(String prefix, int precision) {
             super();
             this.prefix = prefix;
             formatter = NumberFormat.getNumberInstance();
-            formatter.setMinimumFractionDigits(2);
+            formatter.setMinimumFractionDigits(precision);
+            formatter.setMaximumFractionDigits(precision);
             formatter.setRoundingMode(RoundingMode.HALF_EVEN);
         }
 
@@ -320,6 +357,7 @@ public class StockGlance implements HomePageView {
             return Math.abs(value) < 0.01;
         }
 
+        @Override
         public void setValue(Object value) {
             if (value == null) {
                 setText("");
@@ -339,10 +377,10 @@ public class StockGlance implements HomePageView {
         }
     }
 
-    // Render a percentage with 2 digits after the decimal point. Conventions as Currency2Renderer
-    static private class Percent2Renderer extends Currency2Renderer {
-        public Percent2Renderer() {
-            super("");
+    // Render a percentage with 2 digits after the decimal point. Conventions as CurrencyRenderer
+    static private class PercentRenderer extends CurrencyRenderer {
+        public PercentRenderer() {
+            super("", 2);
             formatter = NumberFormat.getPercentInstance();
             formatter.setMinimumFractionDigits(2);
             formatter.setRoundingMode(RoundingMode.HALF_EVEN);
@@ -358,6 +396,7 @@ public class StockGlance implements HomePageView {
             super();
         }
 
+        @Override
         public void setValue(Object value) {
             super.setValue(value);
             setForeground(Color.WHITE);
@@ -365,5 +404,3 @@ public class StockGlance implements HomePageView {
         }
     }
 }
-
-
