@@ -201,19 +201,19 @@ public class StockGlance implements HomePageView {
                 cal.get(Calendar.DAY_OF_MONTH));
         Vector<Vector<Object>> table = new Vector<>();
 
-        for (CurrencyType cur : allCurrencies) {
-            if (!cur.getHideInUI() && cur.getCurrencyType() == CurrencyType.Type.SECURITY) {
-                Double price = priceOrNaN(cur, today, 0);
-                Double price1 = priceOrNaN(cur, today, 1);
-                Double price7 = priceOrNaN(cur, today, 7);
-                Double price30 = priceOrNaN(cur, today, 30);
-                Double price365 = priceOrNaN(cur, today, 365);
+        for (CurrencyType curr : allCurrencies) {
+            if (!curr.getHideInUI() && curr.getCurrencyType() == CurrencyType.Type.SECURITY) {
+                Double price = priceOrNaN(curr, today, 0);
+                Double price1 = priceOrNaN(curr, today, 1);
+                Double price7 = priceOrNaN(curr, today, 7);
+                Double price30 = priceOrNaN(curr, today, 30);
+                Double price365 = priceOrNaN(curr, today, 365);
 
                 if (!Double.isNaN(price) && (!Double.isNaN(price1) || !Double.isNaN(price7)
                         || !Double.isNaN(price30) || !Double.isNaN(price365))) {
                     Vector<Object> entry = new Vector<>();
-                    entry.add(cur.getTickerSymbol());
-                    entry.add(cur.getName());
+                    entry.add(curr.getTickerSymbol());
+                    entry.add(curr.getName());
                     entry.add(price);
                     entry.add(price - price1);
                     entry.add((price - price1) / price1);
@@ -222,7 +222,7 @@ public class StockGlance implements HomePageView {
                     entry.add((price - price365) / price365);
 
                     table.add(entry);
-                    securityCurrencies.add(cur);
+                    securityCurrencies.add(curr);
                 }
             }
         }
@@ -233,11 +233,11 @@ public class StockGlance implements HomePageView {
         return table;
     }
 
-    private Double priceOrNaN(CurrencyType cur, int date, int delta) {
+    private Double priceOrNaN(CurrencyType curr, int date, int delta) {
         try {
             int backDate = backDays(date, delta);
-            if (haveSnapshotWithinWeek(cur, backDate))  {
-                return 1.0 / cur.getUserRateByDateInt(backDate);
+            if (haveSnapshotWithinWeek(curr, backDate))  {
+                return 1.0 / curr.getUserRateByDateInt(backDate);
             } else {
                 return Double.NaN;
             }
@@ -275,8 +275,8 @@ public class StockGlance implements HomePageView {
 
     // MD function getRawRateByDateInt(int dt) returns last known value, even if wildly out of date.
     // Return true if the snapshots contain a rate within a week before the date.
-    private boolean haveSnapshotWithinWeek(CurrencyType cur, int date) {
-        List<CurrencySnapshot> snapshots = cur.getSnapshots();
+    private boolean haveSnapshotWithinWeek(CurrencyType curr, int date) {
+        List<CurrencySnapshot> snapshots = curr.getSnapshots();
         for (CurrencySnapshot snap : snapshots) {
             if ((date - snap.getDateInt()) <= 7) { // within a week
                 return true;
