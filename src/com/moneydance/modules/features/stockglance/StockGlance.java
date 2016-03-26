@@ -52,23 +52,6 @@ public class StockGlance implements HomePageView {
     private AccountBook book;
     private currencyCallback currencyTableCallback;
 
-
-    //
-    // CurrencyListener Interface:
-    //
-    static private class currencyCallback implements CurrencyListener {
-        private StockGlance thisSG;
-
-        public currencyCallback(StockGlance sg) {
-            thisSG = sg;
-        }
-
-        public void currencyTableModified(CurrencyTable table) {
-            thisSG.refresh();
-        }
-    }
-
-
     //
     // HomePageView interface:
     //
@@ -300,6 +283,23 @@ public class StockGlance implements HomePageView {
             }
         }
         return snapshots.isEmpty(); // If no snapshots, use fixed rate; otherwise didn't find snapshot
+    }
+
+    //
+    // Private classes:
+    //
+
+    // CurrencyListener
+    static private class currencyCallback implements CurrencyListener {
+        private StockGlance thisSG;
+
+        public currencyCallback(StockGlance sg) {
+            thisSG = sg;
+        }
+
+        public void currencyTableModified(CurrencyTable table) {
+            thisSG.refresh();
+        }
     }
 
     // Render a currency with 2 digits after the decimal point. NaN is empty cell.
