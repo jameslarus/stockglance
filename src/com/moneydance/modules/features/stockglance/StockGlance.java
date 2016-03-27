@@ -227,7 +227,7 @@ public class StockGlance implements HomePageView {
                         || !Double.isNaN(price30) || !Double.isNaN(price365))) {
                     Vector<Object> entry = new Vector<>();
                     Long bal = balances.get(curr);
-                    Double balance = bal / 10000.0 * price;
+                    Double balance = (bal == null) ? 0.0 : bal / 10000.0 * price;
                     totalBalance += balance;
 
                     entry.add(curr.getTickerSymbol());
@@ -293,6 +293,10 @@ public class StockGlance implements HomePageView {
         while (month > 0 && delta >= DaysInMonth[month - 1]) {
             delta = delta - DaysInMonth[month - 1];
             month = month - 1;
+            if (month == 0 && delta >= DaysInMonth[11]) {
+                month = 12;
+                year -= 1;
+            }
         }
         day = day - delta;
         return makeDateInt(year, month, day);
@@ -303,7 +307,7 @@ public class StockGlance implements HomePageView {
     private boolean haveSnapshotWithinWeek(CurrencyType curr, int date) {
         List<CurrencySnapshot> snapshots = curr.getSnapshots();
         for (CurrencySnapshot snap : snapshots) {
-            if ((date - snap.getDateInt()) <= 7) { // within a week
+            if (Math.abs(date - snap.getDateInt()) <= 7) { // within a week
                 return true;
             }
         }
