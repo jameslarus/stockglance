@@ -278,27 +278,53 @@ public class StockGlance implements HomePageView {
 
     private static int[] DaysInMonth = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
-    private int backDays(int date, int delta) {
-        int year = date / 10000;
-        int month = (date / 100) % 100;
-        int day = date % 100;
-        int daysPerYear = ((year % 4 == 0) && (year % 100 != 0)) ? 366 : 365;
+    private boolean isLeapYear(int year) {return (year % 4 == 0) && (year % 100 != 0);}
+
+    // Month starts at 1 (Jan), but 0 = Dec, -1 = Nov, ...
+    private int daysInMonth(int month, int year) {
+        if (month <= 0) {
+            month += 12;
+        }
+        if (month == 2 && isLeapYear(year)) {
+            return 29;
+        } else {
+            return DaysInMonth[month - 1];
+        }
+    }
+
+    private int prevMonth(int month) { return month == 1 ? 12 : month - 1; }
+
+    // Return the DateInt that is delta days before dateInt
+    public int backDays(int dateInt, int delta) {
+        int year = dateInt / 10000;
+        int month = (dateInt / 100) % 100;
+        int day = dateInt % 100;
+        int daysPerYear = isLeapYear(year) ? 366 : 365;
 
         while (delta >= daysPerYear)
         {
-            delta = delta - daysPerYear;
-            year = year - 1;
-            daysPerYear = ((year % 4 == 0) && (year % 100 != 0)) ? 366 : 365;
+            delta -= daysPerYear;
+            year -= 1;
+            daysPerYear = isLeapYear(year) ? 366 : 365;
         }
-        while (month > 0 && delta >= DaysInMonth[month - 1]) {
-            delta = delta - DaysInMonth[month - 1];
+        while (delta >= daysInMonth(month - 1, year)) {
+            delta = delta - daysInMonth(month - 1, year);
             month = month - 1;
-            if (month == 0 && delta >= DaysInMonth[11]) {
+            if (month == 0) {
                 month = 12;
                 year -= 1;
             }
         }
         day = day - delta;
+        if (day <= 0) {
+            month -= 1;
+            if (month == 0) {
+                month = 12;
+                year -= 1;
+            }
+            day += daysInMonth(month, year);
+        }
+
         return makeDateInt(year, month, day);
     }
 
