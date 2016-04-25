@@ -34,7 +34,6 @@ package com.moneydance.modules.features.stockglance;
 
 import com.infinitekind.moneydance.model.*;
 import com.moneydance.apps.md.view.HomePageView;
-import com.moneydance.awt.CollapsibleRefresher;
 
 import java.math.RoundingMode;
 import java.util.*;
@@ -47,67 +46,82 @@ import javax.swing.table.*;
 
 // Home page component to display active stock prices and returns.
 
-public class StockGlance implements HomePageView {
-    private JScrollPane tablePane;
+class StockGlance implements HomePageView {
     private AccountBook book;
-    private currencyCallback currencyTableCallback;
+    private JTable table;
+    private JScrollPane tablePane;
+    private final currencyCallback currencyTableCallback = new currencyCallback(this);
+
+    StockGlance() {
+    }
+
 
     //
     // HomePageView interface:
     //
 
-    // Returns a GUI component that provides a view of the info pane for the given data file.
-    public javax.swing.JComponent getGUIView(AccountBook book) {
-        this.book = book;
-        tablePane = new JScrollPane(makeTable());
-        return tablePane;
-    }
-
     // Returns a unique identifier for this view.
+    @Override
     public String getID() {
         return "StockGlance";
     }
 
-
-    private CollapsibleRefresher refresher = new CollapsibleRefresher(new Runnable() {
-        @Override
-        public void run() { reallyRefresh(); }
-    });
-
-    public void refresh() {
-        refresher.enqueueRefresh();
+    // Returns a short descriptive name of this view.
+    @Override
+    public String toString() {
+        return "Stock Glance";
     }
 
-    // Forces a refresh of the information in the view.
-    private void reallyRefresh() {
-        tablePane.revalidate();
-        tablePane.repaint();
-    }
-  
-    // Called when the view should clean up everything.
-    public void reset() {
-        tablePane.removeAll();
-        tablePane.revalidate();
-        tablePane.repaint();
-        if (book != null && currencyTableCallback != null) {
-            book.getCurrencies().removeCurrencyListener(currencyTableCallback);
+    // Returns a GUI component that provides a view of the info pane for the given data file.
+    @Override
+    public javax.swing.JComponent getGUIView(AccountBook book) {
+        if (tablePane == null) {
+            synchronized (this) {
+                this.book = book;
+                Vector<Vector<Object>> data = getTableData(book);
+                TableModel tableModel = makeTableModel(data);
+                table = makeTable(tableModel);
+                tablePane = new JScrollPane(table);
+            }
         }
+        return tablePane;
     }
 
-    // Sets the view as active or inactive.
+    // Sets the view as active or inactive. When not active, a view should not have any registered listeners
+    // with other parts of the program. This will be called when an view is added to the home page,
+    // or the home page is refreshed after not being visible for a while.
+    @Override
     public void setActive(boolean active) {
         if (book != null) {
+            book.getCurrencies().removeCurrencyListener(currencyTableCallback); // At most one listener
             if (active) {
                 book.getCurrencies().addCurrencyListener(currencyTableCallback);
-            } else {
-                book.getCurrencies().removeCurrencyListener(currencyTableCallback);
             }
         }
     }
 
-    // Returns a short descriptive name of this view.
-    public String toString() {
-        return "Stock Glance";
+    // Forces a refresh of the information in the view. For example, this is called after the preferences are updated.
+    @Override
+    public void refresh() {
+        synchronized (this) {
+            Vector<Vector<Object>> data = getTableData(book);
+            TableModel tableModel = makeTableModel(data);
+            table.setModel(tableModel);
+        }
+        table.repaint();
+    }
+
+    // Called when the view should clean up everything. For example, this is called when a file is closed and the GUI
+    // is reset. The view should disconnect from any resources that are associated with the currently opened data file.
+    @Override
+    public void reset() {
+        setActive(false);
+        tablePane.removeAll();
+        tablePane = null;
+        table = null;
+        if (book != null) {
+            book.getCurrencies().removeCurrencyListener(currencyTableCallback);
+        }
     }
 
 
@@ -115,31 +129,26 @@ public class StockGlance implements HomePageView {
     // Implementation:
     //
 
-    public StockGlance() {
-        currencyTableCallback = new currencyCallback(this);
-    }
-
-
     // Per column metadata
-    private final String[] names =  {"Symbol",     "Stock",      "Price",      "Change",     "Balance",     "% Day",      "% 7Day",     "% 30Day",    "% 365Day"};
-    private final String[] types =  {"Text",       "Text",       "Currency2",  "Currency2",  "Currency0",    "Percent",    "Percent",    "Percent",    "Percent"};
-    private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class,  Double.class, Double.class, Double.class, Double.class};
+    private final String[] names = {"Symbol", "Stock", "Price", "Change", "Balance", "% Day", "% 7Day", "% 30Day", "% 365Day"};
+    private final String[] types = {"Text", "Text", "Currency2", "Currency2", "Currency0", "Percent", "Percent", "Percent", "Percent"};
+    private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class};
+    private final Vector<String> columnNames = new Vector<>(Arrays.asList(names));
 
     // Per row metadata
-    private Vector<CurrencyType> securityCurrencies = new Vector<>(); // Type of security in each row
+    private final Vector<CurrencyType> securityCurrencies = new Vector<>(); // Type of security in each row
 
-    private JTable makeTable() {
-        Vector<String> columnNames = new Vector<>(Arrays.asList(names));
-        Vector<Vector<Object>> data = getTableData(book);
-
-        DefaultTableModel sortableTableModel = new DefaultTableModel(data, columnNames) {
+    private TableModel makeTableModel(Vector<Vector<Object>> data) {
+        return new DefaultTableModel(data, columnNames) {
             @Override
             public Class<?> getColumnClass(int col) {
                 return classes[col];
             }
         };
+    }
 
-        JTable table = new JTable(sortableTableModel) {
+    private JTable makeTable(TableModel tableModel) {
+        JTable table = new JTable(tableModel) {
             @Override
             public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
                 Component c = super.prepareRenderer(renderer, row, column);
@@ -156,7 +165,9 @@ public class StockGlance implements HomePageView {
             }
 
             @Override
-            public boolean isCellEditable(int row, int column) { return false; }
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
 
             // Rendering depends on row (i.e. security's currency) as well as column
             @Override
@@ -189,7 +200,7 @@ public class StockGlance implements HomePageView {
             }
         };
 
-        for (String name: names) {
+        for (String name : names) {
             TableColumn col = table.getColumn(name);
             HeaderRenderer renderer = new HeaderRenderer();
             renderer.setHorizontalAlignment(JLabel.CENTER);
@@ -201,6 +212,7 @@ public class StockGlance implements HomePageView {
         table.setFillsViewportHeight(true);
         return table;
     }
+
 
     private Vector<Vector<Object>> getTableData(AccountBook book) {
         CurrencyTable ct = book.getCurrencies();
@@ -247,9 +259,14 @@ public class StockGlance implements HomePageView {
         }
         Vector<Object> entry = new Vector<>();
         entry.add("\u03A3"); // Sigma (sorts after all letters in stock names)
-        entry.add(null);entry.add(null); entry.add(null);
+        entry.add(null);
+        entry.add(null);
+        entry.add(null);
         entry.add(totalBalance);
-        entry.add(null); entry.add(null); entry.add(null); entry.add(null);
+        entry.add(null);
+        entry.add(null);
+        entry.add(null);
+        entry.add(null);
         table.add(entry);
 
         // Add callback to refresh table when stock's price changes.
@@ -261,7 +278,7 @@ public class StockGlance implements HomePageView {
     private Double priceOrNaN(CurrencyType curr, int date, int delta) {
         try {
             int backDate = backDays(date, delta);
-            if (haveSnapshotWithinWeek(curr, backDate))  {
+            if (haveSnapshotWithinWeek(curr, backDate)) {
                 return 1.0 / curr.getUserRateByDateInt(backDate);
             } else {
                 return Double.NaN;
@@ -276,9 +293,11 @@ public class StockGlance implements HomePageView {
         return year * 10000 + month * 100 + day;
     }
 
-    private static int[] DaysInMonth = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    private final static int[] DaysInMonth = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
-    private boolean isLeapYear(int year) {return (year % 4 == 0) && (year % 100 != 0);}
+    private boolean isLeapYear(int year) {
+        return (year % 4 == 0) && (year % 100 != 0);
+    }
 
     // Month starts at 1 (Jan), but 0 = Dec, -1 = Nov, ...
     private int daysInMonth(int month, int year) {
@@ -292,8 +311,6 @@ public class StockGlance implements HomePageView {
         }
     }
 
-    private int prevMonth(int month) { return month == 1 ? 12 : month - 1; }
-
     // Return the DateInt that is delta days before dateInt
     public int backDays(int dateInt, int delta) {
         int year = dateInt / 10000;
@@ -301,8 +318,7 @@ public class StockGlance implements HomePageView {
         int day = dateInt % 100;
         int daysPerYear = isLeapYear(year) ? 366 : 365;
 
-        while (delta >= daysPerYear)
-        {
+        while (delta >= daysPerYear) {
             delta -= daysPerYear;
             year -= 1;
             daysPerYear = isLeapYear(year) ? 366 : 365;
@@ -357,9 +373,9 @@ public class StockGlance implements HomePageView {
 
     // CurrencyListener
     static private class currencyCallback implements CurrencyListener {
-        private StockGlance thisSG;
+        private final StockGlance thisSG;
 
-        public currencyCallback(StockGlance sg) {
+        currencyCallback(StockGlance sg) {
             thisSG = sg;
         }
 
@@ -371,10 +387,10 @@ public class StockGlance implements HomePageView {
     // Render a currency with given number of fractional digits. NaN or null is an empty cell.
     // Negative values are red.
     static class CurrencyRenderer extends DefaultTableCellRenderer {
-        protected NumberFormat formatter;
-        private String prefix;
+        NumberFormat formatter;
+        private final String prefix;
 
-        public CurrencyRenderer(String prefix, int precision) {
+        CurrencyRenderer(String prefix, int precision) {
             super();
             this.prefix = prefix;
             formatter = NumberFormat.getNumberInstance();
@@ -383,7 +399,7 @@ public class StockGlance implements HomePageView {
             formatter.setRoundingMode(RoundingMode.HALF_EVEN);
         }
 
-        protected boolean isZero(Double value) {
+        boolean isZero(Double value) {
             return Math.abs(value) < 0.01;
         }
 
@@ -391,10 +407,10 @@ public class StockGlance implements HomePageView {
         public void setValue(Object value) {
             if (value == null) {
                 setText("");
-            } else if (Double.isNaN((Double)value)) {
+            } else if (Double.isNaN((Double) value)) {
                 setText("");
             } else {
-                if (isZero((Double)value)) {
+                if (isZero((Double) value)) {
                     value = 0.0;
                 }
                 setText(prefix + formatter.format(value));
@@ -409,20 +425,21 @@ public class StockGlance implements HomePageView {
 
     // Render a percentage with 2 digits after the decimal point. Conventions as CurrencyRenderer
     static private class PercentRenderer extends CurrencyRenderer {
-        public PercentRenderer() {
+        PercentRenderer() {
             super("", 2);
             formatter = NumberFormat.getPercentInstance();
             formatter.setMinimumFractionDigits(2);
             formatter.setRoundingMode(RoundingMode.HALF_EVEN);
         }
 
-        @Override protected boolean isZero(Double value) {
+        @Override
+        protected boolean isZero(Double value) {
             return Math.abs(value) < 0.0001;
         }
     }
 
     static private class HeaderRenderer extends DefaultTableCellRenderer {
-        public HeaderRenderer() {
+        HeaderRenderer() {
             super();
         }
 
