@@ -55,6 +55,7 @@ class StockGlance implements HomePageView {
     private final currencyCallback currencyTableCallback = new currencyCallback(this);
     private final accountCallback allAccountsCallback = new accountCallback(this);
     private final CollapsibleRefresher refresher;
+    private final Color lightLightGray = new Color(0xDCDCDC);
 
     StockGlance() {
         this.refresher = new CollapsibleRefresher(() -> StockGlance.this.reallyRefresh());
@@ -119,9 +120,14 @@ class StockGlance implements HomePageView {
     // Actually recompute and redisplay table.
     private void reallyRefresh() {
         synchronized (this) {
-            Vector<Vector<Object>> data = getTableData(book);
-            TableModel tableModel = makeTableModel(data);
-            table.setModel(tableModel);
+            Vector<Vector<Object>> newData = getTableData(book);
+            TableModel tm = table.getModel();
+            for (int r = 0; r < newData.size(); r ++) {
+                Vector<Object> row = newData.get(r);
+                for (int c = 0; c < row.size(); c++) {
+                    tm.setValueAt(row.get(c), r, c);
+                }
+            }
         }
         table.repaint();
     }
@@ -166,7 +172,7 @@ class StockGlance implements HomePageView {
                 Component c = super.prepareRenderer(renderer, row, column);
                 // Alternating row color bands
                 if (!isRowSelected(row))
-                    c.setBackground(row % 2 == 0 ? getBackground() : new Color(0xDCDCDC));
+                    c.setBackground(row % 2 == 0 ? getBackground() : lightLightGray);
                 // Balance needs to be wider than other columns
                 if (types[column].equals("Currency0")) {
                     int rendererWidth = c.getPreferredSize().width;
@@ -212,11 +218,10 @@ class StockGlance implements HomePageView {
             }
         };
 
-        for (String name : names) {
-            TableColumn col = table.getColumn(name);
-            HeaderRenderer renderer = new HeaderRenderer();
-            renderer.setHorizontalAlignment(JLabel.CENTER);
-            col.setHeaderRenderer(renderer);
+        TableColumnModel cm = table.getColumnModel();
+        for (int i = 0; i < cm.getColumnCount(); i ++) {
+            TableColumn col = cm.getColumn(i);
+            col.setHeaderRenderer(new HeaderRenderer());
         }
 
         table.setAutoCreateRowSorter(true);
@@ -502,13 +507,14 @@ class StockGlance implements HomePageView {
     static private class HeaderRenderer extends DefaultTableCellRenderer {
         HeaderRenderer() {
             super();
+            setForeground(Color.BLACK);
+            setBackground(Color.lightGray);
+            setHorizontalAlignment(JLabel.CENTER);
         }
 
         @Override
         public void setValue(Object value) {
             super.setValue(value);
-            setForeground(Color.WHITE);
-            setBackground(Color.BLACK);
         }
     }
 }
