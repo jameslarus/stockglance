@@ -35,6 +35,7 @@ package com.moneydance.modules.features.stockglance;
 import com.infinitekind.moneydance.model.*;
 import com.infinitekind.util.StringUtils;
 import com.moneydance.apps.md.view.HomePageView;
+import com.moneydance.awt.CollapsibleRefresher;
 
 import java.util.*;
 import java.text.*;
@@ -51,8 +52,11 @@ class StockGlance implements HomePageView {
     private JTable table;
     private JScrollPane tablePane;
     private final currencyCallback currencyTableCallback = new currencyCallback(this);
+    private final accountCallback allAccountsCallback = new accountCallback(this);
+    private final CollapsibleRefresher refresher;
 
     StockGlance() {
+        this.refresher = new CollapsibleRefresher(() -> StockGlance.this.reallyRefresh());
     }
 
 
@@ -94,15 +98,24 @@ class StockGlance implements HomePageView {
     public void setActive(boolean active) {
         if (book != null) {
             book.getCurrencies().removeCurrencyListener(currencyTableCallback); // At most one listener
+            book.removeAccountListener(allAccountsCallback);
             if (active) {
                 book.getCurrencies().addCurrencyListener(currencyTableCallback);
+                book.addAccountListener(allAccountsCallback);
             }
         }
     }
 
     // Forces a refresh of the information in the view. For example, this is called after the preferences are updated.
+    // Like the other home page controls, we actually do this lazily to avoid repeatedly recalculating after stock
+    // price updates.
     @Override
     public void refresh() {
+            refresher.enqueueRefresh();
+    }
+
+    // Actually recompute and redisplay table.
+    private void reallyRefresh() {
         synchronized (this) {
             Vector<Vector<Object>> data = getTableData(book);
             TableModel tableModel = makeTableModel(data);
@@ -119,9 +132,6 @@ class StockGlance implements HomePageView {
         tablePane.removeAll();
         tablePane = null;
         table = null;
-        if (book != null) {
-            book.getCurrencies().removeCurrencyListener(currencyTableCallback);
-        }
     }
 
 
@@ -269,9 +279,6 @@ class StockGlance implements HomePageView {
         entry.add(null);
         table.add(entry);
 
-        // Add callback to refresh table when stock's price changes.
-        ct.addCurrencyListener(currencyTableCallback);
-
         return table;
     }
 
@@ -380,6 +387,31 @@ class StockGlance implements HomePageView {
         }
 
         public void currencyTableModified(CurrencyTable table) {
+            thisSG.refresh();
+        }
+    }
+
+    // AccountListener
+    static private class accountCallback implements AccountListener {
+        private final StockGlance thisSG;
+
+        accountCallback(StockGlance sg) {
+            thisSG = sg;
+        }
+
+        public void accountAdded(Account parentAccount, Account newAccount) {
+            thisSG.refresh();
+        }
+
+        public void accountBalanceChanged(Account newAccount) {
+            thisSG.refresh();
+        }
+
+        public void accountDeleted(Account parentAccount, Account newAccount) {
+            thisSG.refresh();
+        }
+
+        public void accountModified(Account newAccount) {
             thisSG.refresh();
         }
     }
