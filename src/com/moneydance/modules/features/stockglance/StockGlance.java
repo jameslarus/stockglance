@@ -33,9 +33,9 @@
 package com.moneydance.modules.features.stockglance;
 
 import com.infinitekind.moneydance.model.*;
+import com.infinitekind.util.StringUtils;
 import com.moneydance.apps.md.view.HomePageView;
 
-import java.math.RoundingMode;
 import java.util.*;
 import java.text.*;
 import java.awt.*;
@@ -130,7 +130,7 @@ class StockGlance implements HomePageView {
     //
 
     // Per column metadata
-    private final String[] names = {"Symbol", "Stock", "Price", "Change", "Balance", "% Day", "% 7Day", "% 30Day", "% 365Day"};
+    private final String[] names = {"Symbol", "Stock", "Price", "Change", "Balance", "Day", "7 Day", "30 Day", "365 Day"};
     private final String[] types = {"Text", "Text", "Currency2", "Currency2", "Currency0", "Percent", "Percent", "Percent", "Percent"};
     private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class};
     private final Vector<String> columnNames = new Vector<>(Arrays.asList(names));
@@ -184,7 +184,7 @@ class StockGlance implements HomePageView {
                         CurrencyType security = securityCurrencies.get(row);
                         CurrencyTable table = security.getTable();
                         CurrencyType curr = table.getBaseType();
-                        renderer = new CurrencyRenderer(curr.getPrefix(), types[column].equals("Currency0") ? 0 : 2); // Currency symbol
+                        renderer = new CurrencyRenderer(curr, types[column].equals("Currency0"));
                         renderer.setHorizontalAlignment(JLabel.RIGHT);
                         break;
 
@@ -239,7 +239,7 @@ class StockGlance implements HomePageView {
                         || !Double.isNaN(price30) || !Double.isNaN(price365))) {
                     Vector<Object> entry = new Vector<>();
                     Long bal = balances.get(curr);
-                    Double balance = (bal == null) ? 0.0 : bal / 10000.0 * price;
+                    Double balance = (bal == null) ? 0.0 : curr.getDoubleValue(bal) * price;
                     totalBalance += balance;
 
                     entry.add(curr.getTickerSymbol());
@@ -324,14 +324,14 @@ class StockGlance implements HomePageView {
             daysPerYear = isLeapYear(year) ? 366 : 365;
         }
         while (delta >= daysInMonth(month - 1, year)) {
-            delta = delta - daysInMonth(month - 1, year);
-            month = month - 1;
+            delta -= daysInMonth(month - 1, year);
+            month -= 1;
             if (month == 0) {
                 month = 12;
                 year -= 1;
             }
         }
-        day = day - delta;
+        day -= delta;
         if (day <= 0) {
             month -= 1;
             if (month == 0) {
@@ -386,17 +386,21 @@ class StockGlance implements HomePageView {
 
     // Render a currency with given number of fractional digits. NaN or null is an empty cell.
     // Negative values are red.
-    static class CurrencyRenderer extends DefaultTableCellRenderer {
-        NumberFormat formatter;
-        private final String prefix;
+    static private class CurrencyRenderer extends DefaultTableCellRenderer {
+        private final boolean noDecimals;
+        private final CurrencyType relativeTo;
+        private final char decimalSeparator = '.'; // ToDo: Set from preferences (how?)
+        private final NumberFormat noDecimalFormatter;
 
-        CurrencyRenderer(String prefix, int precision) {
+
+        CurrencyRenderer(CurrencyType currency, boolean noDecimals) {
             super();
-            this.prefix = prefix;
-            formatter = NumberFormat.getNumberInstance();
-            formatter.setMinimumFractionDigits(precision);
-            formatter.setMaximumFractionDigits(precision);
-            formatter.setRoundingMode(RoundingMode.HALF_EVEN);
+            this.noDecimals = noDecimals;
+            CurrencyTable ct = currency.getTable();
+            relativeTo = ct.getBaseType();
+            noDecimalFormatter = NumberFormat.getNumberInstance();
+            noDecimalFormatter.setMinimumFractionDigits(0);
+            noDecimalFormatter.setMaximumFractionDigits(0);
         }
 
         boolean isZero(Double value) {
@@ -413,7 +417,15 @@ class StockGlance implements HomePageView {
                 if (isZero((Double) value)) {
                     value = 0.0;
                 }
-                setText(prefix + formatter.format(value));
+                if (noDecimals) {
+                    // MD format functions can't print comma-separated values without a decimal point so
+                    // we have to do it ourselves
+                    setText(relativeTo.getPrefix() + " " + noDecimalFormatter.format(value) + relativeTo.getSuffix());
+                }
+                else {
+                    final long longValue = (long)((Double)value * 100);
+                    setText(relativeTo.formatFancy(longValue, decimalSeparator));
+                }
                 if ((Double) value < 0.0) {
                     setForeground(Color.RED);
                 } else {
@@ -424,17 +436,34 @@ class StockGlance implements HomePageView {
     }
 
     // Render a percentage with 2 digits after the decimal point. Conventions as CurrencyRenderer
-    static private class PercentRenderer extends CurrencyRenderer {
+    static private class PercentRenderer extends DefaultTableCellRenderer {
+        private final char decimalSeparator = '.'; // ToDo: Set from preferences (how?)
+
         PercentRenderer() {
-            super("", 2);
-            formatter = NumberFormat.getPercentInstance();
-            formatter.setMinimumFractionDigits(2);
-            formatter.setRoundingMode(RoundingMode.HALF_EVEN);
+            super();
+        }
+
+        private boolean isZero(Double value) {
+            return Math.abs(value) < 0.0001;
         }
 
         @Override
-        protected boolean isZero(Double value) {
-            return Math.abs(value) < 0.0001;
+        public void setValue(Object value) {
+            if (value == null) {
+                setText("");
+            } else if (Double.isNaN((Double) value)) {
+                setText("");
+            } else {
+                if (isZero((Double) value)) {
+                    value = 0.0;
+                }
+                setText(StringUtils.formatPercentage((Double)value, decimalSeparator) + "%");
+                if ((Double) value < 0.0) {
+                    setForeground(Color.RED);
+                } else {
+                    setForeground(Color.BLACK);
+                }
+            }
         }
     }
 
