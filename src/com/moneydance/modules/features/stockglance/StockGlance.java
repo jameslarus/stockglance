@@ -1,6 +1,6 @@
 // StockGlance.java
 //
-// Copyright (c) 2015, James Larus
+// Copyright (c) 2015-16, James Larus
 //  All rights reserved.
 //
 //  Redistribution and use in source and binary forms, with or without
@@ -36,6 +36,7 @@ import com.infinitekind.moneydance.model.*;
 import com.infinitekind.util.StringUtils;
 import com.moneydance.apps.md.view.HomePageView;
 import com.moneydance.awt.CollapsibleRefresher;
+import com.moneydance.apps.md.view.gui.MoneydanceLAF;
 
 import java.util.*;
 import java.text.*;
@@ -86,6 +87,7 @@ class StockGlance implements HomePageView {
                 TableModel tableModel = makeTableModel(data);
                 table = makeTable(tableModel);
                 tablePane = new JScrollPane(table);
+                tablePane.setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder, BorderFactory.createEmptyBorder(0, 0, 0, 0)));
             }
         }
         return tablePane;
@@ -111,7 +113,7 @@ class StockGlance implements HomePageView {
     // price updates.
     @Override
     public void refresh() {
-            refresher.enqueueRefresh();
+        refresher.enqueueRefresh();
     }
 
     // Actually recompute and redisplay table.
@@ -219,7 +221,6 @@ class StockGlance implements HomePageView {
 
         table.setAutoCreateRowSorter(true);
         table.getRowSorter().toggleSortOrder(0); // Default is to sort by symbol
-        table.setFillsViewportHeight(true);
         return table;
     }
 
@@ -453,9 +454,8 @@ class StockGlance implements HomePageView {
                     // MD format functions can't print comma-separated values without a decimal point so
                     // we have to do it ourselves
                     setText(relativeTo.getPrefix() + " " + noDecimalFormatter.format(value) + relativeTo.getSuffix());
-                }
-                else {
-                    final long longValue = (long)((Double)value * 100);
+                } else {
+                    final long longValue = (long) ((Double) value * 100);
                     setText(relativeTo.formatFancy(longValue, decimalSeparator));
                 }
                 if ((Double) value < 0.0) {
@@ -489,7 +489,7 @@ class StockGlance implements HomePageView {
                 if (isZero((Double) value)) {
                     value = 0.0;
                 }
-                setText(StringUtils.formatPercentage((Double)value, decimalSeparator) + "%");
+                setText(StringUtils.formatPercentage((Double) value, decimalSeparator) + "%");
                 if ((Double) value < 0.0) {
                     setForeground(Color.RED);
                 } else {
