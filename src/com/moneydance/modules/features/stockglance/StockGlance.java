@@ -50,15 +50,25 @@ import javax.swing.table.*;
 
 class StockGlance implements HomePageView {
     private AccountBook book;
-    private JTable table;
-    private JScrollPane tablePane;
+    private SGTable table;
+    private SGPanel tablePane;
     private final currencyCallback currencyTableCallback = new currencyCallback(this);
     private final accountCallback allAccountsCallback = new accountCallback(this);
     private final CollapsibleRefresher refresher;
     private final Color lightLightGray = new Color(0xDCDCDC);
 
+    // Per column metadata
+    private final String[] names = {"Symbol", "Stock", "Price", "Change", "Balance", "Day", "7 Day", "30 Day", "365 Day"};
+    private final String[] types = {"Text", "Text", "Currency2", "Currency2", "Currency0", "Percent", "Percent", "Percent", "Percent"};
+    private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class};
+    private final Vector<String> columnNames = new Vector<>(Arrays.asList(names));
+
+    // Per row metadata
+    private final Vector<CurrencyType> securityCurrencies = new Vector<>(); // Type of security in each row
+
+
     StockGlance() {
-        this.refresher = new CollapsibleRefresher(StockGlance.this::reallyRefresh);
+        this.refresher = new CollapsibleRefresher(StockGlance.this::actuallyRefresh);
     }
 
 
@@ -81,17 +91,16 @@ class StockGlance implements HomePageView {
     // Returns a GUI component that provides a view of the info pane for the given data file.
     @Override
     public javax.swing.JComponent getGUIView(AccountBook book) {
-        if (tablePane == null) {
-            synchronized (this) {
+        synchronized (this) {
+            if (tablePane == null) {
                 this.book = book;
                 Vector<Vector<Object>> data = getTableData(book);
-                DefaultTableModel tableModel = makeTableModel(data);
-                table = makeTable(tableModel);
-                tablePane = new JScrollPane(table);
-                tablePane.setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder, BorderFactory.createEmptyBorder(0, 0, 0, 0)));
+                TableModel tableModel = new SGTableModel(data, columnNames);
+                table = new SGTable(tableModel);
+                tablePane = new SGPanel(table);
             }
+            return tablePane;
         }
-        return tablePane;
     }
 
     // Sets the view as active or inactive. When not active, a view should not have any registered listeners
@@ -118,12 +127,14 @@ class StockGlance implements HomePageView {
     }
 
     // Actually recompute and redisplay table.
-    private void reallyRefresh() {
+    private void actuallyRefresh() {
         synchronized (this) {
             Vector<Vector<Object>> newData = getTableData(book);
-            ((DefaultTableModel)table.getModel()).setDataVector(newData, columnNames);
+            ((DefaultTableModel) table.getModel()).setDataVector(newData, columnNames);
+            table.fixColumnHeaders();
         }
-        table.validate();
+        tablePane.setVisible(true);
+        tablePane.validate();
     }
 
     // Called when the view should clean up everything. For example, this is called when a file is closed and the GUI
@@ -141,92 +152,10 @@ class StockGlance implements HomePageView {
     // Implementation:
     //
 
-    // Per column metadata
-    private final String[] names = {"Symbol", "Stock", "Price", "Change", "Balance", "Day", "7 Day", "30 Day", "365 Day"};
-    private final String[] types = {"Text", "Text", "Currency2", "Currency2", "Currency0", "Percent", "Percent", "Percent", "Percent"};
-    private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class};
-    private final Vector<String> columnNames = new Vector<>(Arrays.asList(names));
-
-    // Per row metadata
-    private final Vector<CurrencyType> securityCurrencies = new Vector<>(); // Type of security in each row
-
-    private DefaultTableModel makeTableModel(Vector<Vector<Object>> data) {
-        return new DefaultTableModel(data, columnNames) {
-            @Override
-            public Class<?> getColumnClass(int col) {
-                return classes[col];
-            }
-        };
-    }
-
-    private JTable makeTable(TableModel tableModel) {
-        JTable table = new JTable(tableModel) {
-            @Override
-            public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
-                Component c = super.prepareRenderer(renderer, row, column);
-                // Alternating row color bands
-                if (!isRowSelected(row))
-                    c.setBackground(row % 2 == 0 ? getBackground() : lightLightGray);
-                // Balance needs to be wider than other columns
-                if (types[column].equals("Currency0")) {
-                    int rendererWidth = c.getPreferredSize().width;
-                    TableColumn tableColumn = getColumnModel().getColumn(column);
-                    tableColumn.setMinWidth(Math.max(rendererWidth + getIntercellSpacing().width, tableColumn.getMinWidth()));
-                }
-                return c;
-            }
-
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-
-            // Rendering depends on row (i.e. security's currency) as well as column
-            @Override
-            public TableCellRenderer getCellRenderer(int row, int column) {
-                DefaultTableCellRenderer renderer;
-                switch (types[column]) {
-                    case "Text":
-                        renderer = new DefaultTableCellRenderer();
-                        renderer.setHorizontalAlignment(JLabel.LEFT);
-                        break;
-
-                    case "Currency0":
-                    case "Currency2":
-                        CurrencyType security = securityCurrencies.get(row);
-                        CurrencyTable table = security.getTable();
-                        CurrencyType curr = table.getBaseType();
-                        renderer = new CurrencyRenderer(curr, types[column].equals("Currency0"));
-                        renderer.setHorizontalAlignment(JLabel.RIGHT);
-                        break;
-
-                    case "Percent":
-                        renderer = new PercentRenderer();
-                        renderer.setHorizontalAlignment(JLabel.RIGHT);
-                        break;
-
-                    default:
-                        throw new UnsupportedOperationException();
-                }
-                return renderer;
-            }
-        };
-
-        TableColumnModel cm = table.getColumnModel();
-        for (int i = 0; i < cm.getColumnCount(); i ++) {
-            TableColumn col = cm.getColumn(i);
-            col.setHeaderRenderer(new HeaderRenderer());
-        }
-
-        table.setAutoCreateRowSorter(true);
-        table.getRowSorter().toggleSortOrder(0); // Default is to sort by symbol
-        return table;
-    }
-
-
     private Vector<Vector<Object>> getTableData(AccountBook book) {
         CurrencyTable ct = book.getCurrencies();
         java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
+        securityCurrencies.clear();
 
         GregorianCalendar cal = new GregorianCalendar();
         int today = makeDateInt(cal.get(Calendar.YEAR),
@@ -247,7 +176,7 @@ class StockGlance implements HomePageView {
 
                 if (!Double.isNaN(price) && (!Double.isNaN(price1) || !Double.isNaN(price7)
                         || !Double.isNaN(price30) || !Double.isNaN(price365))) {
-                    Vector<Object> entry = new Vector<>();
+                    Vector<Object> entry = new Vector<>(names.length);
                     Long bal = balances.get(curr);
                     Double balance = (bal == null) ? 0.0 : curr.getDoubleValue(bal) * price;
                     totalBalance += balance;
@@ -278,6 +207,7 @@ class StockGlance implements HomePageView {
         entry.add(null);
         entry.add(null);
         data.add(entry);
+        securityCurrencies.add(null);
 
         return data;
     }
@@ -319,7 +249,7 @@ class StockGlance implements HomePageView {
     }
 
     // Return the DateInt that is delta days before dateInt
-    public int backDays(int dateInt, int delta) {
+    private int backDays(int dateInt, int delta) {
         int year = dateInt / 10000;
         int month = (dateInt / 100) % 100;
         int day = dateInt % 100;
@@ -374,6 +304,7 @@ class StockGlance implements HomePageView {
         return totals;
     }
 
+
     //
     // Private classes:
     //
@@ -413,6 +344,102 @@ class StockGlance implements HomePageView {
 
         public void accountModified(Account newAccount) {
             thisSG.refresh();
+        }
+    }
+
+    // JPanel
+    private class SGPanel extends JPanel {
+        SGPanel(JTable table) {
+            super();
+            this.setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
+            add(table.getTableHeader());
+            add(table);
+            setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder, BorderFactory.createEmptyBorder(0, 0, 0, 0)));
+        }
+    }
+
+    // JTable
+    private class SGTable extends JTable {
+        SGTable(TableModel tableModel) {
+            super(tableModel);
+            fixColumnHeaders();
+            setAutoCreateRowSorter(true);
+            getRowSorter().toggleSortOrder(0); // Default is to sort by symbol
+        }
+
+        // Changing data in table also changes the headers, which erases their formatting.
+        void fixColumnHeaders() {
+            TableColumnModel cm = getColumnModel();
+            for (int i = 0; i < cm.getColumnCount(); i++) {
+                TableColumn col = cm.getColumn(i);
+                col.setHeaderRenderer(new HeaderRenderer());
+            }
+        }
+
+        @Override
+        public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
+            Component c = super.prepareRenderer(renderer, row, column);
+            // Alternating row color bands
+            if (!isRowSelected(row))
+                c.setBackground(row % 2 == 0 ? getBackground() : lightLightGray);
+            // Balance needs to be wider than other columns
+            if (types[column].equals("Currency0")) {
+                int rendererWidth = c.getPreferredSize().width;
+                TableColumn tableColumn = getColumnModel().getColumn(column);
+                tableColumn.setMinWidth(Math.max(rendererWidth + getIntercellSpacing().width, tableColumn.getMinWidth()));
+            }
+            return c;
+        }
+
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+
+        // Rendering depends on row (i.e. security's currency) as well as column
+        @Override
+        public TableCellRenderer getCellRenderer(int row, int column) {
+            DefaultTableCellRenderer renderer;
+            switch (types[column]) {
+                case "Text":
+                    renderer = new DefaultTableCellRenderer();
+                    renderer.setHorizontalAlignment(JLabel.LEFT);
+                    break;
+
+                case "Currency0":
+                case "Currency2":
+                    CurrencyType security = securityCurrencies.get(row);
+                    if (security == null) {
+                        renderer = new DefaultTableCellRenderer();
+                    } else {
+                        CurrencyTable table = security.getTable();
+                        CurrencyType curr = table.getBaseType();
+                        renderer = new CurrencyRenderer(curr, types[column].equals("Currency0"));
+                        renderer.setHorizontalAlignment(JLabel.RIGHT);
+                    }
+                    break;
+
+                case "Percent":
+                    renderer = new PercentRenderer();
+                    renderer.setHorizontalAlignment(JLabel.RIGHT);
+                    break;
+
+                default:
+                    return super.getCellRenderer(row, column);
+            }
+            return renderer;
+        }
+    }
+
+    // TableModel
+    private class SGTableModel extends DefaultTableModel {
+        SGTableModel(Vector data, Vector columnNames) {
+            super(data, columnNames);
+        }
+
+        @Override
+        public Class<?> getColumnClass(int columnIndex) {
+            return classes[columnIndex];
         }
     }
 
@@ -504,11 +531,6 @@ class StockGlance implements HomePageView {
             setForeground(Color.BLACK);
             setBackground(Color.lightGray);
             setHorizontalAlignment(JLabel.CENTER);
-        }
-
-        @Override
-        public void setValue(Object value) {
-            super.setValue(value);
         }
     }
 }
