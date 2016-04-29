@@ -58,7 +58,7 @@ class StockGlance implements HomePageView {
     private final Color lightLightGray = new Color(0xDCDCDC);
 
     StockGlance() {
-        this.refresher = new CollapsibleRefresher(() -> StockGlance.this.reallyRefresh());
+        this.refresher = new CollapsibleRefresher(StockGlance.this::reallyRefresh);
     }
 
 
@@ -85,7 +85,7 @@ class StockGlance implements HomePageView {
             synchronized (this) {
                 this.book = book;
                 Vector<Vector<Object>> data = getTableData(book);
-                TableModel tableModel = makeTableModel(data);
+                DefaultTableModel tableModel = makeTableModel(data);
                 table = makeTable(tableModel);
                 tablePane = new JScrollPane(table);
                 tablePane.setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder, BorderFactory.createEmptyBorder(0, 0, 0, 0)));
@@ -121,15 +121,9 @@ class StockGlance implements HomePageView {
     private void reallyRefresh() {
         synchronized (this) {
             Vector<Vector<Object>> newData = getTableData(book);
-            TableModel tm = table.getModel();
-            for (int r = 0; r < newData.size(); r ++) {
-                Vector<Object> row = newData.get(r);
-                for (int c = 0; c < row.size(); c++) {
-                    tm.setValueAt(row.get(c), r, c);
-                }
-            }
+            ((DefaultTableModel)table.getModel()).setDataVector(newData, columnNames);
         }
-        table.repaint();
+        table.validate();
     }
 
     // Called when the view should clean up everything. For example, this is called when a file is closed and the GUI
@@ -156,7 +150,7 @@ class StockGlance implements HomePageView {
     // Per row metadata
     private final Vector<CurrencyType> securityCurrencies = new Vector<>(); // Type of security in each row
 
-    private TableModel makeTableModel(Vector<Vector<Object>> data) {
+    private DefaultTableModel makeTableModel(Vector<Vector<Object>> data) {
         return new DefaultTableModel(data, columnNames) {
             @Override
             public Class<?> getColumnClass(int col) {
@@ -238,7 +232,7 @@ class StockGlance implements HomePageView {
         int today = makeDateInt(cal.get(Calendar.YEAR),
                 cal.get(Calendar.MONTH) + 1, // Jan == 1
                 cal.get(Calendar.DAY_OF_MONTH));
-        Vector<Vector<Object>> table = new Vector<>();
+        Vector<Vector<Object>> data = new Vector<>();
 
         HashMap<CurrencyType, Long> balances = sumBalancesByCurrency(book);
         Double totalBalance = 0.0;
@@ -268,7 +262,7 @@ class StockGlance implements HomePageView {
                     entry.add((price - price30) / price30);
                     entry.add((price - price365) / price365);
 
-                    table.add(entry);
+                    data.add(entry);
                     securityCurrencies.add(curr);
                 }
             }
@@ -283,9 +277,9 @@ class StockGlance implements HomePageView {
         entry.add(null);
         entry.add(null);
         entry.add(null);
-        table.add(entry);
+        data.add(entry);
 
-        return table;
+        return data;
     }
 
     private Double priceOrNaN(CurrencyType curr, int date, int delta) {
