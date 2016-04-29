@@ -59,9 +59,8 @@ class StockGlance implements HomePageView {
 
     // Per column metadata
     private final String[] names = {"Symbol", "Stock", "Price", "Change", "Balance", "Day", "7 Day", "30 Day", "365 Day"};
-    private final String[] types = {"Text", "Text", "Currency2", "Currency2", "Currency0", "Percent", "Percent", "Percent", "Percent"};
-    private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class};
     private final Vector<String> columnNames = new Vector<>(Arrays.asList(names));
+    private final String[] columnTypes = {"Text", "Text", "Currency2", "Currency2", "Currency0", "Percent", "Percent", "Percent", "Percent"};
 
 
     StockGlance() {
@@ -192,20 +191,18 @@ class StockGlance implements HomePageView {
                 }
             }
         }
-        Vector<Object> entry = new Vector<>();
-        entry.add("\u03A3"); // Sigma (sorts after all letters in stock names)
-        entry.add(null);
-        entry.add(null);
-        entry.add(null);
-        entry.add(totalBalance);
-        entry.add(null);
-        entry.add(null);
-        entry.add(null);
-        entry.add(null);
-        data.add(entry);
-        rowCurrencies.add(null);
+        Vector<Object> footer = new Vector<>();
+        footer.add("Total");
+        footer.add(null);
+        footer.add(null);
+        footer.add(null);
+        footer.add(totalBalance);
+        footer.add(null);
+        footer.add(null);
+        footer.add(null);
+        footer.add(null);
 
-        return new SGTableModel(data, columnNames, rowCurrencies);
+        return new SGTableModel(data, columnNames, rowCurrencies, footer);
     }
 
     private Double priceOrNaN(CurrencyType curr, int date, int delta) {
@@ -350,7 +347,35 @@ class StockGlance implements HomePageView {
             this.setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
             add(table.getTableHeader());
             add(table);
+            add(((SGTableModel) table.getModel()).getFooter());
             setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder, BorderFactory.createEmptyBorder(0, 0, 0, 0)));
+        }
+    }
+
+    // TableModel
+    private class SGTableModel extends DefaultTableModel {
+        private final Vector<CurrencyType> rowCurrencies;
+        private final Vector footer;
+
+        SGTableModel(Vector data, Vector columnNames, Vector<CurrencyType> rowCurrencies, Vector footer) {
+            super(data, columnNames);
+            this.rowCurrencies = rowCurrencies;
+            this.footer = footer;
+        }
+
+        Vector<CurrencyType> getRowCurrencies() {
+            return rowCurrencies;
+        }
+
+        JTable getFooter() {
+            Vector<Object> footerData = new Vector<>();
+            footerData.add(footer);
+            return new JTable(new DefaultTableModel(footerData, columnNames)) {
+                @Override
+                public TableCellRenderer getCellRenderer(int row, int column) {
+                    return commonCellRenderer(row, column, rowCurrencies);
+                }
+            };
         }
     }
 
@@ -378,12 +403,6 @@ class StockGlance implements HomePageView {
             // Alternating row color bands
             if (!isRowSelected(row))
                 c.setBackground(row % 2 == 0 ? getBackground() : lightLightGray);
-            // Balance needs to be wider than other columns
-            if (types[column].equals("Currency0")) {
-                int rendererWidth = c.getPreferredSize().width;
-                TableColumn tableColumn = getColumnModel().getColumn(column);
-                tableColumn.setMinWidth(Math.max(rendererWidth + getIntercellSpacing().width, tableColumn.getMinWidth()));
-            }
             return c;
         }
 
@@ -395,50 +414,36 @@ class StockGlance implements HomePageView {
         // Rendering depends on row (i.e. security's currency) as well as column
         @Override
         public TableCellRenderer getCellRenderer(int row, int column) {
-            DefaultTableCellRenderer renderer;
-            switch (types[column]) {
-                case "Text":
-                    renderer = new DefaultTableCellRenderer();
-                    renderer.setHorizontalAlignment(JLabel.LEFT);
-                    break;
-
-                case "Currency0":
-                case "Currency2":
-                    CurrencyType security = ((SGTableModel)dataModel).getRowCurrencies().get(row);
-                    if (security == null) {
-                        renderer = new DefaultTableCellRenderer();
-                    } else {
-                        CurrencyTable table = security.getTable();
-                        CurrencyType curr = table.getBaseType();
-                        renderer = new CurrencyRenderer(curr, types[column].equals("Currency0"));
-                        renderer.setHorizontalAlignment(JLabel.RIGHT);
-                    }
-                    break;
-
-                case "Percent":
-                    renderer = new PercentRenderer();
-                    renderer.setHorizontalAlignment(JLabel.RIGHT);
-                    break;
-
-                default:
-                    return super.getCellRenderer(row, column);
-            }
-            return renderer;
+            return commonCellRenderer(row, column, ((SGTableModel) dataModel).getRowCurrencies());
         }
     }
 
-    // TableModel
-    private class SGTableModel extends DefaultTableModel {
-        private final Vector<CurrencyType> rowCurrencies;
+    private TableCellRenderer commonCellRenderer(int row, int column, Vector<CurrencyType> rowCurrencies) {
+        DefaultTableCellRenderer renderer;
+        switch (columnTypes[column]) {
+            case "Text":
+                renderer = new DefaultTableCellRenderer();
+                renderer.setHorizontalAlignment(JLabel.LEFT);
+                break;
 
-        SGTableModel(Vector data, Vector columnNames, Vector<CurrencyType> rowCurrencies) {
-            super(data, columnNames);
-            this.rowCurrencies = rowCurrencies;
-        }
+            case "Currency0":
+            case "Currency2":
+                CurrencyType security = rowCurrencies.get(row);
+                CurrencyTable table = security.getTable();
+                CurrencyType curr = table.getBaseType();
+                renderer = new CurrencyRenderer(curr, columnTypes[column].equals("Currency0"));
+                renderer.setHorizontalAlignment(JLabel.RIGHT);
+                break;
 
-        Vector<CurrencyType> getRowCurrencies() {
-            return rowCurrencies;
+            case "Percent":
+                renderer = new PercentRenderer();
+                renderer.setHorizontalAlignment(JLabel.RIGHT);
+                break;
+
+            default:
+                renderer = new DefaultTableCellRenderer();
         }
+        return renderer;
     }
 
     // Render a currency with given number of fractional digits. NaN or null is an empty cell.
