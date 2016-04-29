@@ -63,9 +63,6 @@ class StockGlance implements HomePageView {
     private final Class[] classes = {String.class, String.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class, Double.class};
     private final Vector<String> columnNames = new Vector<>(Arrays.asList(names));
 
-    // Per row metadata
-    private final Vector<CurrencyType> securityCurrencies = new Vector<>(); // Type of security in each row
-
 
     StockGlance() {
         this.refresher = new CollapsibleRefresher(StockGlance.this::actuallyRefresh);
@@ -94,8 +91,7 @@ class StockGlance implements HomePageView {
         synchronized (this) {
             if (tablePane == null) {
                 this.book = book;
-                Vector<Vector<Object>> data = getTableData(book);
-                TableModel tableModel = new SGTableModel(data, columnNames);
+                TableModel tableModel = getTableModel(book);
                 table = new SGTable(tableModel);
                 tablePane = new SGPanel(table);
             }
@@ -129,8 +125,8 @@ class StockGlance implements HomePageView {
     // Actually recompute and redisplay table.
     private void actuallyRefresh() {
         synchronized (this) {
-            Vector<Vector<Object>> newData = getTableData(book);
-            ((DefaultTableModel) table.getModel()).setDataVector(newData, columnNames);
+            TableModel tableModel = getTableModel(book);
+            table.setModel(tableModel);
             table.fixColumnHeaders();
         }
         tablePane.setVisible(true);
@@ -152,10 +148,10 @@ class StockGlance implements HomePageView {
     // Implementation:
     //
 
-    private Vector<Vector<Object>> getTableData(AccountBook book) {
+    private TableModel getTableModel(AccountBook book) {
         CurrencyTable ct = book.getCurrencies();
         java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
-        securityCurrencies.clear();
+        final Vector<CurrencyType> rowCurrencies = new Vector<>(); // Type of security in each row
 
         GregorianCalendar cal = new GregorianCalendar();
         int today = makeDateInt(cal.get(Calendar.YEAR),
@@ -192,7 +188,7 @@ class StockGlance implements HomePageView {
                     entry.add((price - price365) / price365);
 
                     data.add(entry);
-                    securityCurrencies.add(curr);
+                    rowCurrencies.add(curr);
                 }
             }
         }
@@ -207,9 +203,9 @@ class StockGlance implements HomePageView {
         entry.add(null);
         entry.add(null);
         data.add(entry);
-        securityCurrencies.add(null);
+        rowCurrencies.add(null);
 
-        return data;
+        return new SGTableModel(data, columnNames, rowCurrencies);
     }
 
     private Double priceOrNaN(CurrencyType curr, int date, int delta) {
@@ -408,7 +404,7 @@ class StockGlance implements HomePageView {
 
                 case "Currency0":
                 case "Currency2":
-                    CurrencyType security = securityCurrencies.get(row);
+                    CurrencyType security = ((SGTableModel)dataModel).getRowCurrencies().get(row);
                     if (security == null) {
                         renderer = new DefaultTableCellRenderer();
                     } else {
@@ -433,13 +429,15 @@ class StockGlance implements HomePageView {
 
     // TableModel
     private class SGTableModel extends DefaultTableModel {
-        SGTableModel(Vector data, Vector columnNames) {
+        private final Vector<CurrencyType> rowCurrencies;
+
+        SGTableModel(Vector data, Vector columnNames, Vector<CurrencyType> rowCurrencies) {
             super(data, columnNames);
+            this.rowCurrencies = rowCurrencies;
         }
 
-        @Override
-        public Class<?> getColumnClass(int columnIndex) {
-            return classes[columnIndex];
+        Vector<CurrencyType> getRowCurrencies() {
+            return rowCurrencies;
         }
     }
 
