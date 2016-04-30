@@ -90,7 +90,7 @@ class StockGlance implements HomePageView {
         synchronized (this) {
             if (tablePane == null) {
                 this.book = book;
-                TableModel tableModel = getTableModel(book);
+                SGTableModel tableModel = getTableModel(book);
                 table = new SGTable(tableModel);
                 tablePane = new SGPanel(table);
             }
@@ -147,7 +147,7 @@ class StockGlance implements HomePageView {
     // Implementation:
     //
 
-    private TableModel getTableModel(AccountBook book) {
+    private SGTableModel getTableModel(AccountBook book) {
         CurrencyTable ct = book.getCurrencies();
         java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
         final Vector<CurrencyType> rowCurrencies = new Vector<>(); // Type of security in each row
@@ -342,12 +342,12 @@ class StockGlance implements HomePageView {
 
     // JPanel
     private class SGPanel extends JPanel {
-        SGPanel(JTable table) {
+        SGPanel(SGTable table) {
             super();
             this.setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
             add(table.getTableHeader());
             add(table);
-            add(((SGTableModel) table.getModel()).getFooter());
+            add(table.getTableFooter());
             setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder, BorderFactory.createEmptyBorder(0, 0, 0, 0)));
         }
     }
@@ -355,9 +355,9 @@ class StockGlance implements HomePageView {
     // TableModel
     private class SGTableModel extends DefaultTableModel {
         private final Vector<CurrencyType> rowCurrencies;
-        private final Vector footer;
+        private final Vector<Object> footer;
 
-        SGTableModel(Vector data, Vector columnNames, Vector<CurrencyType> rowCurrencies, Vector footer) {
+        SGTableModel(Vector data, Vector columnNames, Vector<CurrencyType> rowCurrencies, Vector<Object> footer) {
             super(data, columnNames);
             this.rowCurrencies = rowCurrencies;
             this.footer = footer;
@@ -367,25 +367,27 @@ class StockGlance implements HomePageView {
             return rowCurrencies;
         }
 
-        JTable getFooter() {
-            Vector<Object> footerData = new Vector<>();
-            footerData.add(footer);
-            return new JTable(new DefaultTableModel(footerData, columnNames)) {
-                @Override
-                public TableCellRenderer getCellRenderer(int row, int column) {
-                    return commonCellRenderer(row, column, rowCurrencies);
-                }
-            };
-        }
+        Vector<Object> getFooterVector() { return footer; }
     }
 
     // JTable
     private class SGTable extends JTable {
-        SGTable(TableModel tableModel) {
+        private JTable tableFooter;
+
+        SGTable(SGTableModel tableModel) {
             super(tableModel);
             fixColumnHeaders();
             setAutoCreateRowSorter(true);
             getRowSorter().toggleSortOrder(0); // Default is to sort by symbol
+
+            Vector<Object> footerData = new Vector<>();
+            footerData.add(tableModel.getFooterVector());
+            tableFooter = new JTable(new DefaultTableModel(footerData, columnNames)) {
+                @Override
+                public TableCellRenderer getCellRenderer(int row, int column) {
+                    return commonCellRenderer(row, column, tableModel.getRowCurrencies());
+                }
+            };
         }
 
         // Changing data in table also changes the headers, which erases their formatting.
@@ -416,6 +418,8 @@ class StockGlance implements HomePageView {
         public TableCellRenderer getCellRenderer(int row, int column) {
             return commonCellRenderer(row, column, ((SGTableModel) dataModel).getRowCurrencies());
         }
+
+        JTable getTableFooter() { return tableFooter; }
     }
 
     private TableCellRenderer commonCellRenderer(int row, int column, Vector<CurrencyType> rowCurrencies) {
