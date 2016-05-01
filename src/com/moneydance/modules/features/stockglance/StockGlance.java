@@ -126,13 +126,9 @@ class StockGlance implements HomePageView {
     // Actually recompute and redisplay table.
     private void actuallyRefresh() {
         synchronized (this) {
-            try {
-                TableModel tableModel = getTableModel(book);
-                table.setModel(tableModel);
-                table.fixColumnHeaders();
-            } catch (Exception e) {
-                if (e == null) { }
-            }
+            TableModel tableModel = getTableModel(book);
+            table.setModel(tableModel);
+            table.fixColumnHeaders();
         }
         tablePane.setVisible(true);
         tablePane.validate();
@@ -397,7 +393,6 @@ class StockGlance implements HomePageView {
         // Rendering depends on row (i.e. security's currency) as well as column
         @Override
         public TableCellRenderer getCellRenderer(int row, int column) {
-            Vector<CurrencyType> rowCurrencies = getDataModel().getRowCurrencies();
             DefaultTableCellRenderer renderer;
             switch (columnTypes[column]) {
                 case "Text":
@@ -407,8 +402,13 @@ class StockGlance implements HomePageView {
 
                 case "Currency0":
                 case "Currency2":
-                    CurrencyTable table = book.getCurrencies();
-                    CurrencyType curr = table.getBaseType();
+                    Vector<CurrencyType> rowCurrencies = getDataModel().getRowCurrencies();
+                    CurrencyType curr;
+                    if (0 <= row && row < rowCurrencies.size()) {
+                        curr = rowCurrencies.get(row);
+                    } else {
+                        curr = book.getCurrencies().getBaseType(); // Footer reports base currency
+                    }
                     renderer = new CurrencyRenderer(curr, columnTypes[column].equals("Currency0"));
                     renderer.setHorizontalAlignment(JLabel.RIGHT);
                     break;
@@ -449,12 +449,7 @@ class StockGlance implements HomePageView {
             // Create footer table
             Vector<Object> footerData = new Vector<>();
             footerData.add(tableModel.getFooterVector());
-            footerTable = new BaseSGTable(new DefaultTableModel(footerData, columnNames)) {
-                @Override
-                SGTableModel getDataModel() {
-                    return tableModel;
-                } // Footer uses same SGTableModel
-            };
+            footerTable = new BaseSGTable(new SGTableModel(footerData, columnNames, new Vector<>(), new Vector<>()));
 
             // Link body and footer columns
             // http://stackoverflow.com/questions/2666758/issue-with-resizing-columns-in-a-double-jtable
@@ -498,7 +493,12 @@ class StockGlance implements HomePageView {
             super();
             this.noDecimals = noDecimals;
             CurrencyTable ct = currency.getTable();
-            relativeTo = ct.getBaseType();
+            String relativeToName = currency.getParameter(CurrencyType.TAG_RELATIVE_TO_CURR);
+            if (relativeToName != null) {
+                relativeTo = ct.getCurrencyByIDString(relativeToName);
+            } else {
+                relativeTo = ct.getBaseType();
+            }
             noDecimalFormatter = NumberFormat.getNumberInstance();
             noDecimalFormatter.setMinimumFractionDigits(0);
             noDecimalFormatter.setMaximumFractionDigits(0);
@@ -521,10 +521,11 @@ class StockGlance implements HomePageView {
                 if (noDecimals) {
                     // MD format functions can't print comma-separated values without a decimal point so
                     // we have to do it ourselves
-                    setText(relativeTo.getPrefix() + " " + noDecimalFormatter.format(value) + relativeTo.getSuffix());
+                    final double scaledValue = (Double) value * relativeTo.getUserRate();
+                    setText(relativeTo.getPrefix() + " " + noDecimalFormatter.format(scaledValue) + relativeTo.getSuffix());
                 } else {
-                    final long longValue = (long) ((Double) value * 100);
-                    setText(relativeTo.formatFancy(longValue, decimalSeparator));
+                    final long scaledValue = relativeTo.convertValue(relativeTo.getLongValue((Double) value));
+                    setText(relativeTo.formatFancy(scaledValue, decimalSeparator));
                 }
                 if ((Double) value < 0.0) {
                     setForeground(Color.RED);
