@@ -153,13 +153,8 @@ class StockGlance implements HomePageView {
         CurrencyTable ct = book.getCurrencies();
         java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
         final Vector<CurrencyType> rowCurrencies = new Vector<>(); // Type of security in each row
-
-        GregorianCalendar cal = new GregorianCalendar();
-        int today = makeDateInt(cal.get(Calendar.YEAR),
-                cal.get(Calendar.MONTH) + 1, // Jan == 1
-                cal.get(Calendar.DAY_OF_MONTH));
         Vector<Vector<Object>> data = new Vector<>();
-
+        Calendar today = Calendar.getInstance();
         HashMap<CurrencyType, Long> balances = sumBalancesByCurrency(book);
         Double totalBalance = 0.0;
 
@@ -207,7 +202,7 @@ class StockGlance implements HomePageView {
         return new SGTableModel(data, columnNames, rowCurrencies, footer);
     }
 
-    private Double priceOrNaN(CurrencyType curr, int date, int delta) {
+    private Double priceOrNaN(CurrencyType curr, Calendar date, int delta) {
         try {
             int backDate = backDays(date, delta);
             if (haveSnapshotWithinWeek(curr, backDate)) {
@@ -220,60 +215,11 @@ class StockGlance implements HomePageView {
         }
     }
 
-    // Date int is yyyymmdd
-    private int makeDateInt(int year, int month, int day) {
-        return year * 10000 + month * 100 + day;
-    }
-
-    private final static int[] DaysInMonth = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-
-    private boolean isLeapYear(int year) {
-        return (year % 4 == 0) && (year % 100 != 0);
-    }
-
-    // Month starts at 1 (Jan), but 0 = Dec, -1 = Nov, ...
-    private int daysInMonth(int month, int year) {
-        if (month <= 0) {
-            month += 12;
-        }
-        if (month == 2 && isLeapYear(year)) {
-            return 29;
-        } else {
-            return DaysInMonth[month - 1];
-        }
-    }
-
-    // Return the DateInt that is delta days before dateInt
-    private int backDays(int dateInt, int delta) {
-        int year = dateInt / 10000;
-        int month = (dateInt / 100) % 100;
-        int day = dateInt % 100;
-        int daysPerYear = isLeapYear(year) ? 366 : 365;
-
-        while (delta >= daysPerYear) {
-            delta -= daysPerYear;
-            year -= 1;
-            daysPerYear = isLeapYear(year) ? 366 : 365;
-        }
-        while (delta >= daysInMonth(month - 1, year)) {
-            delta -= daysInMonth(month - 1, year);
-            month -= 1;
-            if (month == 0) {
-                month = 12;
-                year -= 1;
-            }
-        }
-        day -= delta;
-        if (day <= 0) {
-            month -= 1;
-            if (month == 0) {
-                month = 12;
-                year -= 1;
-            }
-            day += daysInMonth(month, year);
-        }
-
-        return makeDateInt(year, month, day);
+    // Return the date that is delta days before startDate
+    private int backDays(Calendar startDate, int delta) {
+        Calendar newDate = (Calendar) startDate.clone();
+        newDate.add(Calendar.DAY_OF_MONTH, -delta);
+        return DateUtil.convertCalToInt(newDate);
     }
 
     // MD function getRawRateByDateInt(int dt) returns last known value, even if wildly out of date.
