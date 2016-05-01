@@ -33,6 +33,7 @@
 package com.moneydance.modules.features.stockglance;
 
 import com.infinitekind.moneydance.model.*;
+import com.infinitekind.util.DateUtil;
 import com.infinitekind.util.StringUtils;
 import com.moneydance.apps.md.view.HomePageView;
 import com.moneydance.awt.CollapsibleRefresher;
@@ -284,7 +285,7 @@ class StockGlance implements HomePageView {
     private boolean haveSnapshotWithinWeek(CurrencyType curr, int date) {
         List<CurrencySnapshot> snapshots = curr.getSnapshots();
         for (CurrencySnapshot snap : snapshots) {
-            if (Math.abs(date - snap.getDateInt()) <= 7) { // within a week
+            if (DateUtil.calculateDaysBetween(snap.getDateInt(), date) <= 7) { // within a week
                 return true;
             }
         }
