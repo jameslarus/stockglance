@@ -125,9 +125,13 @@ class StockGlance implements HomePageView {
     // Actually recompute and redisplay table.
     private void actuallyRefresh() {
         synchronized (this) {
-            TableModel tableModel = getTableModel(book);
-            table.setModel(tableModel);
-            table.fixColumnHeaders();
+            try {
+                TableModel tableModel = getTableModel(book);
+                table.setModel(tableModel);
+                table.fixColumnHeaders();
+            } catch (Exception e) {
+                if (e == null) { }
+            }
         }
         tablePane.setVisible(true);
         tablePane.validate();
@@ -402,8 +406,7 @@ class StockGlance implements HomePageView {
 
                 case "Currency0":
                 case "Currency2":
-                    CurrencyType security = rowCurrencies.get(row);
-                    CurrencyTable table = security.getTable();
+                    CurrencyTable table = book.getCurrencies();
                     CurrencyType curr = table.getBaseType();
                     renderer = new CurrencyRenderer(curr, columnTypes[column].equals("Currency0"));
                     renderer.setHorizontalAlignment(JLabel.RIGHT);
