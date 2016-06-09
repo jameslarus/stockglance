@@ -33,7 +33,6 @@
 package com.moneydance.modules.features.stockglance;
 
 import com.moneydance.apps.md.controller.FeatureModule;
-import com.moneydance.apps.md.controller.FeatureModule;
 
 
 /**
