@@ -127,11 +127,15 @@ class StockGlance implements HomePageView {
     private void actuallyRefresh() {
         synchronized (this) {
             TableModel tableModel = getTableModel(book);
-            table.setModel(tableModel);
-            table.fixColumnHeaders();
+            if (table != null) {
+                table.setModel(tableModel);
+                table.fixColumnHeaders();
+            }
         }
-        tablePane.setVisible(true);
-        tablePane.validate();
+        if (tablePane != null) {
+            tablePane.setVisible(true);
+            tablePane.validate();
+        }
     }
 
     // Called when the view should clean up everything. For example, this is called when a file is closed and the GUI
@@ -139,7 +143,9 @@ class StockGlance implements HomePageView {
     @Override
     public void reset() {
         setActive(false);
-        tablePane.removeAll();
+        if (tablePane != null) {
+            tablePane.removeAll();
+        }
         tablePane = null;
         table = null;
     }
