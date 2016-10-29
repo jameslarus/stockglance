@@ -212,7 +212,7 @@ class StockGlance implements HomePageView {
         try {
             int backDate = backDays(date, delta);
             if (haveSnapshotWithinWeek(curr, backDate)) {
-                return 1.0 / curr.getUserRateByDateInt(backDate);
+                    return 1.0 / curr.adjustRateForSplitsInt(backDate, curr.getUserRateByDateInt(backDate));
             } else {
                 return Double.NaN;
             }
