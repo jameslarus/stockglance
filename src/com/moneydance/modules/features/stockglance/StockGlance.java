@@ -324,6 +324,14 @@ class StockGlance implements HomePageView {
         Vector<Object> getFooterVector() {
             return footer;
         }
+
+        @Override
+        public Class<?> getColumnClass(final int columnIndex) {
+            if(columnIndex == 0 || columnIndex == 1) {
+                return String.class;
+            }
+            else { return Double.class; }
+        }
     }
 
     // JTable
