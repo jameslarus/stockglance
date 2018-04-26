@@ -29,6 +29,9 @@
 //  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 //  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 //  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// modified by waynelloydsmith April 24 2018 added sorting of rows numerically by price
+// add method fixTheRowSorter() 
 
 package com.moneydance.modules.features.stockglance;
 
@@ -125,11 +128,12 @@ class StockGlance implements HomePageView {
 
     // Actually recompute and redisplay table.
     private void actuallyRefresh() {
-        synchronized (this) {
+        synchronized (this) { 
             TableModel tableModel = getTableModel(book);
             if (table != null) {
                 table.setModel(tableModel);
                 table.fixColumnHeaders();
+                table.fixTheRowSorter();
             }
         }
         if (tablePane != null) {
@@ -141,7 +145,7 @@ class StockGlance implements HomePageView {
     // Called when the view should clean up everything. For example, this is called when a file is closed and the GUI
     // is reset. The view should disconnect from any resources that are associated with the currently opened data file.
     @Override
-    public void reset() {
+    public void reset() {  
         setActive(false);
         if (tablePane != null) {
             tablePane.removeAll();
@@ -389,14 +393,34 @@ class StockGlance implements HomePageView {
         }
     }
 
+	    
+     Comparator numComparator = new java.util.Comparator() {                  //add
+            @Override                                                        //add
+            public int compare(Object oo1, Object oo2) {                     //add
+	    if (oo1 instanceof Double && oo2 instanceof Double ) {           //add
+                Double val1 = (Double) oo1;                                  //add
+                Double val2 = (Double) oo2;                                  //add 
+                return Double.compare(val1,val2);                             //add   
+            }                                                                 //add  
+            else if (oo1 instanceof String && oo2 instanceof String ) {       //add
+                String val1 = (String) oo1;                                   //add
+                String val2 = (String) oo2;                                   //add		
+                return val1.compareTo(val2);                                  //add   
+            }                                                                 //add
+            else { return 0;}                                                //add    
+         }                                                                    //add 
+      };                                                                      //add
+	    
+    
     private class SGTable extends BaseSGTable {
-        private final JTable footerTable;
+      private final JTable footerTable;
 
         SGTable(SGTableModel tableModel) {
             super(tableModel);
             fixColumnHeaders();
-            setAutoCreateRowSorter(true);
-            getRowSorter().toggleSortOrder(0); // Default: sort by symbol
+//            setAutoCreateRowSorter(true);                       //delete
+//            getRowSorter().toggleSortOrder(0); //delete  Default: sort by symbol  moved
+            fixTheRowSorter();
 
             // Create footer table
             Vector<Object> footerData = new Vector<>();
@@ -417,7 +441,20 @@ class StockGlance implements HomePageView {
                 TableColumn col = cm.getColumn(i);
                 col.setHeaderRenderer(new HeaderRenderer());
             }
+	}
+            
+        // Changing the tableModel wipes out the row sorter too
+        void fixTheRowSorter() {                                    
+          TableRowSorter sorter = new TableRowSorter();
+          setRowSorter(sorter);
+          sorter.setModel(getModel());
+          for(int i = 0 ; i < 9 ; i++) {
+            sorter.setComparator(i, numComparator);
+          }
+          getRowSorter().toggleSortOrder(0); // Default: sort by symbol  moved
         }
+      
+        
 
         @Override
         public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
@@ -427,7 +464,7 @@ class StockGlance implements HomePageView {
             return c;
         }
 
-        JTable getFooterTable() {
+        JTable getFooterTable() { 
             return footerTable;
         }
     }
