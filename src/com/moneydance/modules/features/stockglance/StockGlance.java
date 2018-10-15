@@ -317,6 +317,25 @@ class StockGlance implements HomePageView {
             this.footer = footer;
         }
 
+        // Need to define so columns are properly sorted, not treated as strings.
+        @Override
+        public Class<?> getColumnClass(int columnIndex) {
+            switch(columnTypes[columnIndex]) {
+                case "Text":
+                    return String.class;
+
+                case "Currency0":
+                case "Currency2":
+                    return Double.class;
+
+                case "Percent":
+                    return Double.class;
+
+                default:
+                    return String.class;
+            }
+        }
+
         Vector<CurrencyType> getRowCurrencies() {
             return rowCurrencies;
         }
