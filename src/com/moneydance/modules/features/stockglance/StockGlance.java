@@ -41,6 +41,10 @@ import com.moneydance.apps.md.view.gui.MoneydanceLAF;
 
 import java.util.*;
 import java.text.*;
+
+import static javax.swing.SwingConstants.LEFT;
+import static javax.swing.SwingConstants.RIGHT;
+
 import java.awt.*;
 import java.util.List;
 import javax.swing.*;
@@ -62,7 +66,11 @@ class StockGlance implements HomePageView {
     // Per column metadata
     private final String[] names = {"Symbol", "Stock", "Price", "Change", "Balance", "Day", "7 Day", "30 Day", "365 Day"};
     private final Vector<String> columnNames = new Vector<>(Arrays.asList(names));
-    private final String[] columnTypes = {"Text", "Text", "Currency2", "Currency2", "Currency0", "Percent", "Percent", "Percent", "Percent"};
+    private final String TEXT_COL = "Text";
+    private final String CURR0_COL = "Currency0";
+    private final String CURR2_COL = "Currency2";
+    private final String PERCENT_COL = "Percent";
+    private final String[] columnTypes = {TEXT_COL, TEXT_COL, CURR2_COL, CURR2_COL, CURR0_COL, PERCENT_COL, PERCENT_COL, PERCENT_COL, PERCENT_COL};
 
 
     StockGlance() {
@@ -172,18 +180,19 @@ class StockGlance implements HomePageView {
                 Double price30 = priceOrNaN(curr, today, 30);
                 Double price365 = priceOrNaN(curr, today, 365);
 
-                if (!Double.isNaN(price) && (!Double.isNaN(price1) || !Double.isNaN(price7)
-                        || !Double.isNaN(price30) || !Double.isNaN(price365))) {
+                if (!Double.isNaN(price)
+                    && (!Double.isNaN(price1) || !Double.isNaN(price7) || !Double.isNaN(price30) || !Double.isNaN(price365))) {
                     Vector<Object> entry = new Vector<>(names.length);
-                    Long bal = balances.get(curr);
-                    Double balance = (bal == null) ? 0.0 : curr.getDoubleValue(bal) * price;
-                    totalBalance += balance;
+                    Long shares = balances.get(curr);
+                    Double dShares = (shares == null) ? 0.0 : curr.getDoubleValue(shares) ;
+                    totalBalance += dShares * 1.0 / curr.getBaseRate();
+                    //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+") bal="+bal+", baseRate="+1.0/curr.getBaseRate());
 
                     entry.add(curr.getTickerSymbol());
                     entry.add(curr.getName());
                     entry.add(price);
                     entry.add(price - price1);
-                    entry.add(balance);
+                    entry.add(dShares * price);
                     entry.add((price - price1) / price1);
                     entry.add((price - price7) / price7);
                     entry.add((price - price30) / price30);
@@ -212,7 +221,9 @@ class StockGlance implements HomePageView {
         try {
             int backDate = backDays(date, delta);
             if (haveSnapshotWithinWeek(curr, backDate)) {
-                    return 1.0 / curr.adjustRateForSplitsInt(backDate, curr.getUserRateByDateInt(backDate));
+                double adjRate = curr.adjustRateForSplitsInt(backDate, curr.getRelativeRate(backDate));
+                //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+"): "+curr.getRelativeRate(backDate)+", "+adjRate);
+                return 1.0 / adjRate;
             } else {
                 return Double.NaN;
             }
@@ -242,7 +253,7 @@ class StockGlance implements HomePageView {
 
     private HashMap<CurrencyType, Long> sumBalancesByCurrency(AccountBook book) {
         HashMap<CurrencyType, Long> totals = new HashMap<>();
-        for (Account acct : AccountUtil.allMatchesForSearch(book.getRootAccount(), AcctFilter.ALL_ACCOUNTS_FILTER)) {
+        for (Account acct : AccountUtil.allMatchesForSearch(book, AcctFilter.ALL_ACCOUNTS_FILTER)) {
             CurrencyType curr = acct.getCurrencyType();
             Long total = totals.get(curr);
             total = ((total == null) ? 0L : total) + acct.getCurrentBalance();
@@ -321,14 +332,14 @@ class StockGlance implements HomePageView {
         @Override
         public Class<?> getColumnClass(int columnIndex) {
             switch(columnTypes[columnIndex]) {
-                case "Text":
+                case TEXT_COL:
                     return String.class;
 
-                case "Currency0":
-                case "Currency2":
+                case CURR0_COL:
+                case CURR2_COL:
                     return Double.class;
 
-                case "Percent":
+                case PERCENT_COL:
                     return Double.class;
 
                 default:
@@ -366,27 +377,27 @@ class StockGlance implements HomePageView {
         public TableCellRenderer getCellRenderer(int row, int column) {
             DefaultTableCellRenderer renderer;
             switch (columnTypes[column]) {
-                case "Text":
+                case TEXT_COL:
                     renderer = new DefaultTableCellRenderer();
-                    renderer.setHorizontalAlignment(JLabel.LEFT);
+                    renderer.setHorizontalAlignment(LEFT);
                     break;
 
-                case "Currency0":
-                case "Currency2":
+                case CURR0_COL:
+                case CURR2_COL:
                     Vector<CurrencyType> rowCurrencies = getDataModel().getRowCurrencies();
                     CurrencyType curr;
                     if (0 <= row && row < rowCurrencies.size()) {
-                        curr = rowCurrencies.get(row);
+                        curr = rowCurrencies.get(row);              // Security
                     } else {
                         curr = book.getCurrencies().getBaseType(); // Footer reports base currency
                     }
-                    renderer = new CurrencyRenderer(curr, columnTypes[column].equals("Currency0"));
-                    renderer.setHorizontalAlignment(JLabel.RIGHT);
+                    renderer = new CurrencyRenderer(curr, columnTypes[column].equals(CURR0_COL));
+                    renderer.setHorizontalAlignment(RIGHT);
                     break;
 
-                case "Percent":
+                case PERCENT_COL:
                     renderer = new PercentRenderer();
-                    renderer.setHorizontalAlignment(JLabel.RIGHT);
+                    renderer.setHorizontalAlignment(RIGHT);
                     break;
 
                 default:
@@ -460,16 +471,10 @@ class StockGlance implements HomePageView {
         private final NumberFormat noDecimalFormatter;
 
 
-        CurrencyRenderer(CurrencyType currency, boolean noDecimals) {
+        CurrencyRenderer(CurrencyType curr, boolean noDecimals) {
             super();
             this.noDecimals = noDecimals;
-            CurrencyTable ct = currency.getTable();
-            String relativeToName = currency.getParameter(CurrencyType.TAG_RELATIVE_TO_CURR);
-            if (relativeToName != null) {
-                relativeTo = ct.getCurrencyByIDString(relativeToName);
-            } else {
-                relativeTo = ct.getBaseType();
-            }
+            relativeTo = curr.getRelativeCurrency();
             noDecimalFormatter = NumberFormat.getNumberInstance();
             noDecimalFormatter.setMinimumFractionDigits(0);
             noDecimalFormatter.setMaximumFractionDigits(0);
@@ -483,25 +488,26 @@ class StockGlance implements HomePageView {
         public void setValue(Object value) {
             if (value == null) {
                 setText("");
-            } else if (Double.isNaN((Double) value)) {
-                setText("");
             } else {
-                if (isZero((Double) value)) {
-                    value = 0.0;
-                }
-                if (noDecimals) {
-                    // MD format functions can't print comma-separated values without a decimal point so
-                    // we have to do it ourselves
-                    final double scaledValue = (Double) value * relativeTo.getUserRate();
-                    setText(relativeTo.getPrefix() + " " + noDecimalFormatter.format(scaledValue) + relativeTo.getSuffix());
+                Double valueAsDouble = (Double)value;
+                if (Double.isNaN(valueAsDouble)) {
+                    setText("");
                 } else {
-                    final long scaledValue = relativeTo.convertValue(relativeTo.getLongValue((Double) value));
-                    setText(relativeTo.formatFancy(scaledValue, decimalSeparator));
-                }
-                if ((Double) value < 0.0) {
-                    setForeground(Color.RED);
-                } else {
-                    setForeground(Color.BLACK);
+                    if (isZero(valueAsDouble)) {
+                        value = 0.0;
+                    }
+                    if (noDecimals) {
+                        // MD format functions can't print comma-separated values without a decimal point so
+                        // we have to do it ourselves
+                        setText(relativeTo.getPrefix() + " " + noDecimalFormatter.format(valueAsDouble) + relativeTo.getSuffix());
+                    } else {
+                        setText(relativeTo.formatFancy(relativeTo.getLongValue(valueAsDouble), decimalSeparator));
+                    }
+                    if (valueAsDouble < 0.0) {
+                        setForeground(Color.RED);
+                    } else {
+                        setForeground(Color.BLACK);
+                    }
                 }
             }
         }
@@ -523,17 +529,20 @@ class StockGlance implements HomePageView {
         public void setValue(Object value) {
             if (value == null) {
                 setText("");
-            } else if (Double.isNaN((Double) value)) {
-                setText("");
             } else {
-                if (isZero((Double) value)) {
-                    value = 0.0;
-                }
-                setText(StringUtils.formatPercentage((Double) value, decimalSeparator) + "%");
-                if ((Double) value < 0.0) {
-                    setForeground(Color.RED);
+                Double valueAsDouble = (Double)value;
+                if (Double.isNaN(valueAsDouble)) {
+                setText("");
                 } else {
-                    setForeground(Color.BLACK);
+                    if (isZero(valueAsDouble)) {
+                        value = 0.0;
+                    }
+                    setText(StringUtils.formatPercentage(valueAsDouble, decimalSeparator) + "%");
+                    if (valueAsDouble < 0.0) {
+                        setForeground(Color.RED);
+                    } else {
+                        setForeground(Color.BLACK);
+                    }
                 }
             }
         }
@@ -544,7 +553,7 @@ class StockGlance implements HomePageView {
             super();
             setForeground(Color.BLACK);
             setBackground(Color.lightGray);
-            setHorizontalAlignment(JLabel.CENTER);
+            setHorizontalAlignment(CENTER);
         }
     }
 }

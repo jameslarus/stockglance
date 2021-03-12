@@ -4,7 +4,7 @@ http://jakarta.apache.org/ant/index.html
 -->
 
 <project name="stockglance" default="all" basedir=".">
-  <property name="version"  value="1.1"/>
+  <property name="version"  value="1.10"/>
   <property name="src" value="."/>
   <property file="${src}/user.properties"/>
   <property name="build" value="./build"/>
@@ -24,7 +24,6 @@ http://jakarta.apache.org/ant/index.html
   <path id="classpath">
     <pathelement path="../lib/extadmin.jar"/>
     <pathelement path="../lib/moneydance-dev.jar"/>
-    <pathelement path="/Applications/Moneydance.app/Contents/Java/moneydance.jar" />
   </path>
 
   <target name="init">
