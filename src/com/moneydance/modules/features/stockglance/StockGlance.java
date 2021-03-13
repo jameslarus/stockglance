@@ -58,18 +58,18 @@ class StockGlance implements HomePageView {
     private AccountBook book;
     private SGTable table;
     private SGPanel tablePane;
-    private final currencyCallback currencyTableCallback = new currencyCallback(this);
-    private final accountCallback allAccountsCallback = new accountCallback(this);
+    private final CurrencyCallback currencyTableCallback = new CurrencyCallback(this);
+    private final AccountCallback allAccountsCallback = new AccountCallback(this);
     private final CollapsibleRefresher refresher;
     private final Color lightLightGray = new Color(0xDCDCDC);
 
     // Per column metadata
     private final String[] names = {"Symbol", "Stock", "Price", "Change", "Balance", "Day", "7 Day", "30 Day", "365 Day"};
     private final Vector<String> columnNames = new Vector<>(Arrays.asList(names));
-    private final String TEXT_COL = "Text";
-    private final String CURR0_COL = "Currency0";
-    private final String CURR2_COL = "Currency2";
-    private final String PERCENT_COL = "Percent";
+    private static final String TEXT_COL = "Text";
+    private static final String CURR0_COL = "Currency0";
+    private static final String CURR2_COL = "Currency2";
+    private static final String PERCENT_COL = "Percent";
     private final String[] columnTypes = {TEXT_COL, TEXT_COL, CURR2_COL, CURR2_COL, CURR0_COL, PERCENT_COL, PERCENT_COL, PERCENT_COL, PERCENT_COL};
 
 
@@ -268,10 +268,10 @@ class StockGlance implements HomePageView {
     //
 
     // CurrencyListener
-    static private class currencyCallback implements CurrencyListener {
+    private static class CurrencyCallback implements CurrencyListener {
         private final StockGlance thisSG;
 
-        currencyCallback(StockGlance sg) {
+        CurrencyCallback(StockGlance sg) {
             thisSG = sg;
         }
 
@@ -281,10 +281,10 @@ class StockGlance implements HomePageView {
     }
 
     // AccountListener
-    static private class accountCallback implements AccountListener {
+    private static class AccountCallback implements AccountListener {
         private final StockGlance thisSG;
 
-        accountCallback(StockGlance sg) {
+        AccountCallback(StockGlance sg) {
             thisSG = sg;
         }
 
@@ -307,6 +307,8 @@ class StockGlance implements HomePageView {
 
     // JPanel
     private class SGPanel extends JPanel {
+        private static final long serialVersionUID = 1905122041950251207L;
+
         SGPanel(SGTable table) {
             super();
             this.setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
@@ -319,8 +321,9 @@ class StockGlance implements HomePageView {
 
     // TableModel
     private class SGTableModel extends DefaultTableModel {
-        private final Vector<CurrencyType> rowCurrencies;
-        private final Vector<Object> footer;
+        private static final long serialVersionUID = 1905122041950251207L;
+        private final transient Vector<CurrencyType> rowCurrencies;
+        private final transient Vector<Object> footer;
 
         SGTableModel(Vector data, Vector columnNames, Vector<CurrencyType> rowCurrencies, Vector<Object> footer) {
             super(data, columnNames);
@@ -359,6 +362,8 @@ class StockGlance implements HomePageView {
     // JTable
     // Basic functional for tables that display StockGlance information
     private class BaseSGTable extends JTable {
+        private static final long serialVersionUID = 1905122041950251207L;
+
         BaseSGTable(TableModel tableModel) {
             super(tableModel);
         }
@@ -420,6 +425,8 @@ class StockGlance implements HomePageView {
     }
 
     private class SGTable extends BaseSGTable {
+        private static final long serialVersionUID = 1905122041950251207L;
+
         private final JTable footerTable;
 
         SGTable(SGTableModel tableModel) {
@@ -464,9 +471,11 @@ class StockGlance implements HomePageView {
 
     // Render a currency with given number of fractional digits. NaN or null is an empty cell.
     // Negative values are red.
-    static private class CurrencyRenderer extends DefaultTableCellRenderer {
+    private static class CurrencyRenderer extends DefaultTableCellRenderer {
+        private static final long serialVersionUID = 1905122041950251207L;
+
         private final boolean noDecimals;
-        private final CurrencyType relativeTo;
+        private final transient CurrencyType relativeTo;
         private final char decimalSeparator = '.'; // ToDo: Set from preferences (how?)
         private final NumberFormat noDecimalFormatter;
 
@@ -488,33 +497,36 @@ class StockGlance implements HomePageView {
         public void setValue(Object value) {
             if (value == null) {
                 setText("");
+                return;
+            }
+            Double valueAsDouble = (Double)value;
+            if (Double.isNaN(valueAsDouble)) {
+                setText("");
+                return;
+            }
+
+            if (isZero(valueAsDouble)) {
+                valueAsDouble = 0.0;
+            }
+            if (noDecimals) {
+                // MD format functions can't print comma-separated values without a decimal point so
+                // we have to do it ourselves
+                setText(relativeTo.getPrefix() + " " + noDecimalFormatter.format(valueAsDouble) + relativeTo.getSuffix());
             } else {
-                Double valueAsDouble = (Double)value;
-                if (Double.isNaN(valueAsDouble)) {
-                    setText("");
-                } else {
-                    if (isZero(valueAsDouble)) {
-                        value = 0.0;
-                    }
-                    if (noDecimals) {
-                        // MD format functions can't print comma-separated values without a decimal point so
-                        // we have to do it ourselves
-                        setText(relativeTo.getPrefix() + " " + noDecimalFormatter.format(valueAsDouble) + relativeTo.getSuffix());
-                    } else {
-                        setText(relativeTo.formatFancy(relativeTo.getLongValue(valueAsDouble), decimalSeparator));
-                    }
-                    if (valueAsDouble < 0.0) {
-                        setForeground(Color.RED);
-                    } else {
-                        setForeground(Color.BLACK);
-                    }
-                }
+                setText(relativeTo.formatFancy(relativeTo.getLongValue(valueAsDouble), decimalSeparator));
+            }
+            if (valueAsDouble < 0.0) {
+                setForeground(Color.RED);
+            } else {
+                setForeground(Color.BLACK);
             }
         }
     }
 
     // Render a percentage with 2 digits after the decimal point. Conventions as CurrencyRenderer
-    static private class PercentRenderer extends DefaultTableCellRenderer {
+    private static class PercentRenderer extends DefaultTableCellRenderer {
+        private static final long serialVersionUID = 1905122041950251207L;
+
         private final char decimalSeparator = '.'; // ToDo: Set from preferences (how?)
 
         PercentRenderer() {
@@ -529,26 +541,28 @@ class StockGlance implements HomePageView {
         public void setValue(Object value) {
             if (value == null) {
                 setText("");
-            } else {
-                Double valueAsDouble = (Double)value;
-                if (Double.isNaN(valueAsDouble)) {
+                return;
+            }
+            Double valueAsDouble = (Double)value;
+            if (Double.isNaN(valueAsDouble)) {
                 setText("");
-                } else {
-                    if (isZero(valueAsDouble)) {
-                        value = 0.0;
-                    }
-                    setText(StringUtils.formatPercentage(valueAsDouble, decimalSeparator) + "%");
-                    if (valueAsDouble < 0.0) {
-                        setForeground(Color.RED);
-                    } else {
-                        setForeground(Color.BLACK);
-                    }
-                }
+                return;
+            }
+            if (isZero(valueAsDouble)) {
+                valueAsDouble = 0.0;
+            }
+            setText(StringUtils.formatPercentage(valueAsDouble, decimalSeparator) + "%");
+            if (valueAsDouble < 0.0) {
+                setForeground(Color.RED);
+            } else {
+                setForeground(Color.BLACK);
             }
         }
     }
 
-    static private class HeaderRenderer extends DefaultTableCellRenderer {
+    private static class HeaderRenderer extends DefaultTableCellRenderer {
+        private static final long serialVersionUID = 1905122041950251207L;
+
         HeaderRenderer() {
             super();
             setForeground(Color.BLACK);

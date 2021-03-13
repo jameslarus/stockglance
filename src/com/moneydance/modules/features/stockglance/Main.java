@@ -42,6 +42,7 @@ import com.moneydance.apps.md.controller.FeatureModule;
 public class Main extends FeatureModule {
     private StockGlance glance;
 
+    @Override
     public void init() {
         try {
             glance = new StockGlance();
@@ -59,11 +60,13 @@ public class Main extends FeatureModule {
         return "Stock Glance";
     }
 
+    @Override
     public void cleanup() {
         glance.reset();
         glance = null;
     }
 
+    @Override
     public void unload() {
         cleanup();
     }
