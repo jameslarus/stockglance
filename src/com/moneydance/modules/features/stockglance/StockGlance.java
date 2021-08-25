@@ -1,6 +1,6 @@
 // StockGlance.java
 //
-// Copyright (c) 2015-16, James Larus
+// Copyright (c) 2015-2021, James Larus
 //  All rights reserved.
 //
 //  Redistribution and use in source and binary forms, with or without
@@ -49,6 +49,8 @@ import java.awt.*;
 import java.util.List;
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
+import javax.swing.JCheckBox;
+import javax.swing.JSlider;
 import javax.swing.table.*;
 
 
@@ -58,6 +60,11 @@ class StockGlance implements HomePageView {
     private AccountBook book;
     private SGTable table;
     private SGPanel tablePane;
+
+    private boolean displayUnknownPrices = false;
+    private boolean displayZeroShares = false;
+    private int priceWindowSize = 7;
+
     private final CurrencyCallback currencyTableCallback = new CurrencyCallback(this);
     private final AccountCallback allAccountsCallback = new AccountCallback(this);
     private final CollapsibleRefresher refresher;
@@ -100,9 +107,10 @@ class StockGlance implements HomePageView {
         synchronized (this) {
             if (tablePane == null) {
                 this.book = book;
-                SGTableModel tableModel = getTableModel(book);
-                table = new SGTable(tableModel);
-                tablePane = new SGPanel(table);
+                getPreferences();
+                SGTableModel tableModel = getTableModel(book, displayUnknownPrices, displayZeroShares, priceWindowSize);
+                table = new SGTable(this, tableModel);
+                tablePane = new SGPanel(table, displayUnknownPrices, displayZeroShares, priceWindowSize);
             }
             return tablePane;
         }
@@ -134,7 +142,7 @@ class StockGlance implements HomePageView {
     // Actually recompute and redisplay table.
     private void actuallyRefresh() {
         synchronized (this) {
-            TableModel tableModel = getTableModel(book);
+            TableModel tableModel = getTableModel(book, displayUnknownPrices, displayZeroShares, priceWindowSize);
             if (table != null) {
                 table.setModel(tableModel);
                 table.fixColumnHeaders();
@@ -158,12 +166,44 @@ class StockGlance implements HomePageView {
         table = null;
     }
 
+    // Preference of which stocks are displayed in the table.
+    private void getPreferences(){
+        Account rootAccount = book.getRootAccount();
+        displayUnknownPrices = rootAccount.getPreferenceBoolean("StockGlance_displayUnkownPrices", false);
+        displayZeroShares = rootAccount.getPreferenceBoolean("StockGlance_displayZeroShares", false);
+        priceWindowSize = rootAccount.getPreferenceInt("StockGlance_priceWindow", 7);
+    }
 
+    private void savePreferences(){
+        Account rootAccount = book.getRootAccount();
+        rootAccount.setPreference("StockGlance_displayUnkownPrices", displayUnknownPrices);
+        rootAccount.setPreference("StockGlance_displayZeroShares", displayZeroShares);
+        rootAccount.setPreference("StockGlance_priceWindow", priceWindowSize);
+    }
+
+    void setUnknownPrice(boolean flag) {
+        displayUnknownPrices = flag;
+        savePreferences();
+        refresh();
+    }
+
+    void setZeroShares(boolean flag) {
+        displayZeroShares = flag;
+        savePreferences();
+        refresh();
+    }
+
+    void setPriceWindow(int value) {
+        priceWindowSize = value;
+        savePreferences();
+        refresh();
+    }
+    
     //
     // Implementation:
     //
 
-    private SGTableModel getTableModel(AccountBook book) {
+    private SGTableModel getTableModel(AccountBook book, boolean displayUnknownPrices, boolean displayZeroShares, int priceWindowSize) {
         CurrencyTable ct = book.getCurrencies();
         java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
         final Vector<CurrencyType> rowCurrencies = new Vector<>(); // Type of security in each row
@@ -174,19 +214,24 @@ class StockGlance implements HomePageView {
 
         for (CurrencyType curr : allCurrencies) {
             if (!curr.getHideInUI() && curr.getCurrencyType() == CurrencyType.Type.SECURITY) {
-                Double price = priceOrNaN(curr, today, 0);
-                Double price1 = priceOrNaN(curr, today, 1);
-                Double price7 = priceOrNaN(curr, today, 7);
-                Double price30 = priceOrNaN(curr, today, 30);
-                Double price365 = priceOrNaN(curr, today, 365);
+                Double price = priceOrNaN(curr, today, 0, priceWindowSize);
+                Double price1 = priceOrNaN(curr, today, 1, priceWindowSize);
+                Double price7 = priceOrNaN(curr, today, 7, priceWindowSize);
+                Double price30 = priceOrNaN(curr, today, 30, priceWindowSize);
+                Double price365 = priceOrNaN(curr, today, 365, priceWindowSize);
 
-                if (!Double.isNaN(price)
-                    && (!Double.isNaN(price1) || !Double.isNaN(price7) || !Double.isNaN(price30) || !Double.isNaN(price365))) {
+                if (displayUnknownPrices
+                    || (!Double.isNaN(price)
+                        && (!Double.isNaN(price1) || !Double.isNaN(price7) || !Double.isNaN(price30) || !Double.isNaN(price365)))) {
                     Vector<Object> entry = new Vector<>(names.length);
                     Long shares = balances.get(curr);
                     Double dShares = (shares == null) ? 0.0 : curr.getDoubleValue(shares) ;
+
+                    if (shares == 0 && !displayZeroShares){
+                        continue;
+                    }
                     totalBalance += dShares * 1.0 / curr.getBaseRate();
-                    //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+") bal="+bal+", baseRate="+1.0/curr.getBaseRate());
+                    //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+") bal="+dShares+", baseRate="+1.0/curr.getBaseRate());
 
                     entry.add(curr.getTickerSymbol());
                     entry.add(curr.getName());
@@ -217,10 +262,10 @@ class StockGlance implements HomePageView {
         return new SGTableModel(data, columnNames, rowCurrencies, footer);
     }
 
-    private Double priceOrNaN(CurrencyType curr, Calendar date, int delta) {
+    private Double priceOrNaN(CurrencyType curr, Calendar date, int delta, int priceWindowSize) {
         try {
             int backDate = backDays(date, delta);
-            if (haveSnapshotWithinWeek(curr, backDate)) {
+            if (haveSnapshotWithinWeek(curr, backDate, priceWindowSize)) {
                 double adjRate = curr.adjustRateForSplitsInt(backDate, curr.getRelativeRate(backDate));
                 //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+"): "+curr.getRelativeRate(backDate)+", "+adjRate);
                 return 1.0 / adjRate;
@@ -239,16 +284,20 @@ class StockGlance implements HomePageView {
         return DateUtil.convertCalToInt(newDate);
     }
 
-    // MD function getRawRateByDateInt(int dt) returns last known value, even if wildly out of date.
-    // Return true if the snapshots contain a rate within a week before the date.
-    private boolean haveSnapshotWithinWeek(CurrencyType curr, int date) {
+    // MD function getRelativeRate(int dt) returns last known rate, even if price is far from the
+    // desired date DT.
+    // Return true if the snapshots contain a rate within a window before the given date.
+    private boolean haveSnapshotWithinWeek(CurrencyType curr, int date, int priceWindowSize) {
         List<CurrencySnapshot> snapshots = curr.getSnapshots();
+        if (priceWindowSize == INFINITY) {
+            return !snapshots.isEmpty();
+        }
         for (CurrencySnapshot snap : snapshots) {
-            if (DateUtil.calculateDaysBetween(snap.getDateInt(), date) <= 7) { // within a week
+            if (DateUtil.calculateDaysBetween(snap.getDateInt(), date) <= priceWindowSize) {
                 return true;
             }
         }
-        return snapshots.isEmpty(); // If no snapshots, use fixed rate; otherwise didn't find snapshot
+        return false;
     }
 
     private HashMap<CurrencyType, Long> sumBalancesByCurrency(AccountBook book) {
@@ -305,17 +354,56 @@ class StockGlance implements HomePageView {
         }
     }
 
+    static final int INFINITY = 40;
+
     // JPanel
     private class SGPanel extends JPanel {
         private static final long serialVersionUID = 1905122041950251207L;
 
-        SGPanel(SGTable table) {
+        SGPanel(SGTable table, boolean displayUnknownPrices, boolean displayZeroShares, int priceWindowSize) {
             super();
+            JPanel controlPanel = new JPanel();
+            controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.LINE_AXIS));
+
+            JCheckBox unknownPriceCheckbox = new JCheckBox("Display unknown prices");
+            unknownPriceCheckbox.setSelected(displayUnknownPrices);
+            JCheckBox zeroSharesCheckbox = new JCheckBox("Display zero shares");
+            zeroSharesCheckbox.setSelected(displayZeroShares);
+            JPanel checkPanel = new JPanel(new GridLayout(0, 1));
+            checkPanel.add(unknownPriceCheckbox);
+            checkPanel.add(zeroSharesCheckbox);
+            controlPanel.add(checkPanel);
+
+            unknownPriceCheckbox.addItemListener(e -> table.setUnknownPrice(unknownPriceCheckbox.isSelected()));
+            zeroSharesCheckbox.addItemListener(e -> table.setZeroShares(zeroSharesCheckbox.isSelected()));
+
+            JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
+            JLabel sliderLabel = new JLabel("Valid price window", javax.swing.SwingConstants.CENTER);
+            sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+            JSlider priceWindow = new JSlider(javax.swing.SwingConstants.HORIZONTAL, 1, 40, 7);
+            priceWindow.setValue(priceWindowSize);
+            Hashtable<Integer, JLabel> labelTable = new Hashtable<> ();
+            labelTable.put(1, new JLabel("day"));
+            labelTable.put(7, new JLabel("week"));
+            labelTable.put(14, new JLabel("month"));
+            labelTable.put(30, new JLabel("year"));
+            labelTable.put(INFINITY, new JLabel("\u221E"));
+            priceWindow.setLabelTable(labelTable);
+            priceWindow.setSnapToTicks(true);
+            priceWindow.setPaintTicks(true);
+            priceWindow.setPaintLabels(true);
+            sliderPanel.add(sliderLabel);
+            sliderPanel.add(priceWindow);
+            controlPanel.add(sliderPanel);
+         
+            priceWindow.addChangeListener(e -> table.setPriceWindow(priceWindow.getValue()));
+
             this.setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
-            add(table.getTableHeader());
-            add(table);
-            add(table.getFooterTable());
-            setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder, BorderFactory.createEmptyBorder(0, 0, 0, 0)));
+            this.add(controlPanel);
+            this.add(table.getTableHeader());
+            this.add(table);
+            this.add(table.getFooterTable());
+            this.setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder, BorderFactory.createEmptyBorder(0, 0, 0, 0)));
         }
     }
 
@@ -428,9 +516,12 @@ class StockGlance implements HomePageView {
         private static final long serialVersionUID = 1905122041950251207L;
 
         private final JTable footerTable;
+        private final transient StockGlance thisSG;
 
-        SGTable(SGTableModel tableModel) {
+        SGTable(StockGlance thisSG, SGTableModel tableModel) {
             super(tableModel);
+
+            this.thisSG = thisSG;
             fixColumnHeaders();
             setAutoCreateRowSorter(true);
             getRowSorter().toggleSortOrder(0); // Default: sort by symbol
@@ -466,6 +557,18 @@ class StockGlance implements HomePageView {
 
         JTable getFooterTable() {
             return footerTable;
+        }
+
+        void setUnknownPrice(boolean flag) {
+            thisSG.setUnknownPrice(flag);
+        }
+
+        void setZeroShares(boolean flag) {
+            thisSG.setZeroShares(flag);
+        }
+        
+        void setPriceWindow(int value) {
+            thisSG.setPriceWindow(value);
         }
     }
 

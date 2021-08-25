@@ -1,6 +1,6 @@
 {
   "vendor" = "James Larus"
-  "module_build" = "10"
+  "module_build" = "11"
   "minbuild" = "1000"
   "vendor.url" = ""
   "module_name" = "Stock Glance"
