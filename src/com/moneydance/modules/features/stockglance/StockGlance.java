@@ -354,7 +354,31 @@ class StockGlance implements HomePageView {
         }
     }
 
-    static final int INFINITY = 40;
+    // Sliders have a linear scale, but we want to allow a large range of days (1..365). The numberic
+    // value of the slider will not correspond to the days, but will be translated through this table.
+    static final int INFINITY = -1;
+    static final int[] slider_labels = {1, 7, 14, 30, 40};
+    static final int[] date_windows = {1, 7, 30, 365, INFINITY};
+
+    static int window2lablel(int window)
+    {
+        for (int i = 0; i < date_windows.length; i++) {
+            if (date_windows[i] == window) {
+                return slider_labels[i];
+            }
+        }
+        return window;
+    }
+
+    static int label2window(int label)
+    {
+        for (int i = 0; i < slider_labels.length; i++) {
+            if (slider_labels[i] == label) {
+                return date_windows[i];
+            }
+        }
+        return label;
+    }
 
     // JPanel
     private class SGPanel extends JPanel {
@@ -381,13 +405,13 @@ class StockGlance implements HomePageView {
             JLabel sliderLabel = new JLabel("Valid price window", javax.swing.SwingConstants.CENTER);
             sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
             JSlider priceWindow = new JSlider(javax.swing.SwingConstants.HORIZONTAL, 1, 40, 7);
-            priceWindow.setValue(priceWindowSize);
+            priceWindow.setValue(window2lablel(priceWindowSize));
             Hashtable<Integer, JLabel> labelTable = new Hashtable<> ();
-            labelTable.put(1, new JLabel("day"));
-            labelTable.put(7, new JLabel("week"));
-            labelTable.put(14, new JLabel("month"));
-            labelTable.put(30, new JLabel("year"));
-            labelTable.put(INFINITY, new JLabel("\u221E"));
+            labelTable.put(slider_labels[0], new JLabel("day"));
+            labelTable.put(slider_labels[1], new JLabel("week"));
+            labelTable.put(slider_labels[2], new JLabel("month"));
+            labelTable.put(slider_labels[3], new JLabel("year"));
+            labelTable.put(slider_labels[4], new JLabel("\u221E"));
             priceWindow.setLabelTable(labelTable);
             priceWindow.setSnapToTicks(true);
             priceWindow.setPaintTicks(true);
@@ -396,7 +420,7 @@ class StockGlance implements HomePageView {
             sliderPanel.add(priceWindow);
             controlPanel.add(sliderPanel);
          
-            priceWindow.addChangeListener(e -> table.setPriceWindow(priceWindow.getValue()));
+            priceWindow.addChangeListener(e -> table.setPriceWindow(label2window(priceWindow.getValue())));
 
             this.setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
             this.add(controlPanel);
