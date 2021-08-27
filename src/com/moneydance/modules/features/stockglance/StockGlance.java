@@ -229,7 +229,7 @@ class StockGlance implements HomePageView {
                     Long shares = balances.get(curr);
                     Double dShares = (shares == null) ? 0.0 : curr.getDoubleValue(shares) ;
 
-                    if (shares == 0 && !displayZeroShares){
+                    if ((shares == null || shares == 0) && !displayZeroShares){
                         continue;
                     }
                     totalBalance += dShares * 1.0 / curr.getBaseRate();
