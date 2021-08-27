@@ -33,6 +33,8 @@
 package com.moneydance.modules.features.stockglance;
 
 import com.moneydance.apps.md.controller.FeatureModule;
+import com.moneydance.apps.md.controller.FeatureModuleContext;
+import com.moneydance.apps.md.view.gui.MoneydanceGUI;
 
 
 /**
@@ -45,7 +47,9 @@ public class Main extends FeatureModule {
     @Override
     public void init() {
         try {
-            glance = new StockGlance();
+            FeatureModuleContext context = getContext();
+            MoneydanceGUI mdGUI = (MoneydanceGUI)((com.moneydance.apps.md.controller.Main) context).getUI();
+            glance = new StockGlance(mdGUI);
             getContext().registerHomePageView(this, glance);
         } catch (Exception e) {
             e.printStackTrace(System.err);
