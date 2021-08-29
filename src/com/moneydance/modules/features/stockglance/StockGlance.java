@@ -84,6 +84,8 @@ class StockGlance implements HomePageView {
     StockGlance(MoneydanceGUI mdGUI) {
         this.mdGUI = mdGUI;
         this.refresher = new CollapsibleRefresher(StockGlance.this::actuallyRefresh);
+        table = null;
+        tablePane = null;
     }
 
 
@@ -110,8 +112,7 @@ class StockGlance implements HomePageView {
             if (tablePane == null) {
                 this.book = book;
                 getPreferences();
-                SGTableModel tableModel = getTableModel(book, displayUnknownPrices, displayZeroShares, priceWindowSize);
-                table = new SGTable(mdGUI, this, tableModel);
+                table = new SGTable(mdGUI, this, book, true, displayUnknownPrices, displayZeroShares, priceWindowSize);
                 tablePane = new SGPanel(mdGUI, table, displayUnknownPrices, displayZeroShares, priceWindowSize);
             }
             return tablePane;
@@ -144,15 +145,13 @@ class StockGlance implements HomePageView {
     // Actually recompute and redisplay table.
     private void actuallyRefresh() {
         synchronized (this) {
-            TableModel tableModel = getTableModel(book, displayUnknownPrices, displayZeroShares, priceWindowSize);
             if (table != null) {
-                table.setModel(tableModel);
-                table.fixColumnHeaders();
+                table.recomputeModel(book, displayUnknownPrices, displayZeroShares, priceWindowSize);
             }
         }
         if (tablePane != null) {
             tablePane.setVisible(true);
-            tablePane.validate();
+            tablePane.revalidate();
         }
     }
 
@@ -171,14 +170,14 @@ class StockGlance implements HomePageView {
     // Preference of which stocks are displayed in the table.
     private void getPreferences(){
         Account rootAccount = book.getRootAccount();
-        displayUnknownPrices = rootAccount.getPreferenceBoolean("StockGlance_displayUnkownPrices", false);
+        displayUnknownPrices = rootAccount.getPreferenceBoolean("StockGlance_displayUnknownPrices", false);
         displayZeroShares = rootAccount.getPreferenceBoolean("StockGlance_displayZeroShares", false);
         priceWindowSize = rootAccount.getPreferenceInt("StockGlance_priceWindow", 7);
     }
 
     private void savePreferences(){
         Account rootAccount = book.getRootAccount();
-        rootAccount.setPreference("StockGlance_displayUnkownPrices", displayUnknownPrices);
+        rootAccount.setPreference("StockGlance_displayUnknownPrices", displayUnknownPrices);
         rootAccount.setPreference("StockGlance_displayZeroShares", displayZeroShares);
         rootAccount.setPreference("StockGlance_priceWindow", priceWindowSize);
     }
@@ -186,202 +185,307 @@ class StockGlance implements HomePageView {
     void setUnknownPrice(boolean flag) {
         displayUnknownPrices = flag;
         savePreferences();
-        refresh();
     }
 
     void setZeroShares(boolean flag) {
         displayZeroShares = flag;
         savePreferences();
-        refresh();
     }
 
     void setPriceWindow(int value) {
         priceWindowSize = value;
         savePreferences();
-        refresh();
     }
+
     
     //
-    // Implementation:
+    // Implementation and private classes.
     //
 
-    private SGTableModel getTableModel(AccountBook book, boolean displayUnknownPrices, boolean displayZeroShares, int priceWindowSize) {
-        CurrencyTable ct = book.getCurrencies();
-        java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
-        final Vector<CurrencyType> rowCurrencies = new Vector<>(); // Type of security in each row
-        Vector<Vector<Object>> data = new Vector<>();
-        Calendar today = Calendar.getInstance();
-        HashMap<CurrencyType, Long> balances = sumBalancesByCurrency(book);
-        Double totalBalance = 0.0;
+    private class SGTable extends JTable {
+        transient MoneydanceGUI mdGUI;
+        private transient StockGlance thisSG;
+        private SGTable footerTable = null;
 
-        for (CurrencyType curr : allCurrencies) {
-            if (!curr.getHideInUI() && curr.getCurrencyType() == CurrencyType.Type.SECURITY) {
-                Double price = priceOrNaN(curr, today, 0, priceWindowSize);
-                Double price1 = priceOrNaN(curr, today, 1, priceWindowSize);
-                Double price7 = priceOrNaN(curr, today, 7, priceWindowSize);
-                Double price30 = priceOrNaN(curr, today, 30, priceWindowSize);
-                Double price365 = priceOrNaN(curr, today, 365, priceWindowSize);
+        SGTable(MoneydanceGUI mdGUI, StockGlance thisSG, AccountBook book, boolean isMainTable, boolean displayUnknownPrices, boolean displayZeroShares, int priceWindowSize) {
+            super();
 
-                if (displayUnknownPrices
-                    || (!Double.isNaN(price)
-                        && (!Double.isNaN(price1) || !Double.isNaN(price7) || !Double.isNaN(price30) || !Double.isNaN(price365)))) {
-                    Vector<Object> entry = new Vector<>(names.length);
-                    Long shares = balances.get(curr);
-                    Double dShares = (shares == null) ? 0.0 : curr.getDoubleValue(shares) ;
+            this.mdGUI = mdGUI;
+            this.thisSG = thisSG;
 
-                    if ((shares == null || shares == 0) && !displayZeroShares){
-                        continue;
+            this.setForeground(mdGUI.getColors().registerTextFG);
+            this.setBackground(mdGUI.getColors().registerBG1);
+            
+            // Body table
+            SGTableModel tableModel = new SGTableModel(new Vector<>(), columnNames, new Vector<>());
+            this.setModel(tableModel);
+            fixColumnHeaders();
+            setAutoCreateRowSorter(true);
+            getRowSorter().toggleSortOrder(0); // Default: sort by symbol
+
+            if (isMainTable) {
+                // Footer table
+                footerTable = new SGTable(mdGUI, thisSG, book, false, displayUnknownPrices, displayZeroShares, priceWindowSize);
+                SGTableModel footerTableModel = new SGTableModel(new Vector<>(), columnNames, new Vector<>());
+                footerTable.setModel(footerTableModel);
+
+                // Link body and footer columns
+                // http://stackoverflow.com/questions/2666758/issue-with-resizing-columns-in-a-double-jtable
+                footerTable.setColumnModel(this.getColumnModel());
+                this.getColumnModel().addColumnModelListener(footerTable);
+                footerTable.getColumnModel().addColumnModelListener(this);
+
+                recomputeModel(book, displayUnknownPrices, displayZeroShares, priceWindowSize);
+            }
+        }
+
+        public void recomputeModel(AccountBook book, boolean displayUnknownPrices, boolean displayZeroShares, int priceWindowSize) 
+        {
+            CurrencyTable ct = book.getCurrencies();
+            java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
+            Calendar today = Calendar.getInstance();
+
+            SGTableModel model = this.getDataModel();
+            Vector<CurrencyType> rowCurrencies = model.getRowCurrencies();      // Type of security in each row
+            rowCurrencies.clear();
+            Vector<Vector> data = model.getDataVector();
+            data.clear();
+
+            HashMap<CurrencyType, Long> balances = sumBalancesByCurrency(book);
+            Double totalBalance = 0.0;
+    
+            for (CurrencyType curr : allCurrencies) {
+                if (!curr.getHideInUI() && curr.getCurrencyType() == CurrencyType.Type.SECURITY) {
+                    Double price = priceOrNaN(curr, today, 0, priceWindowSize);
+                    Double price1 = priceOrNaN(curr, today, 1, priceWindowSize);
+                    Double price7 = priceOrNaN(curr, today, 7, priceWindowSize);
+                    Double price30 = priceOrNaN(curr, today, 30, priceWindowSize);
+                    Double price365 = priceOrNaN(curr, today, 365, priceWindowSize);
+    
+                    if (displayUnknownPrices
+                        || (!Double.isNaN(price)
+                            && (!Double.isNaN(price1) || !Double.isNaN(price7) || !Double.isNaN(price30) || !Double.isNaN(price365)))) {
+                        Vector<Object> entry = new Vector<>(names.length);
+                        Long shares = balances.get(curr);
+                        Double dShares = (shares == null) ? 0.0 : curr.getDoubleValue(shares) ;
+    
+                        if ((shares == null || shares == 0) && !displayZeroShares){
+                            continue;
+                        }
+                        totalBalance += dShares * 1.0 / curr.getBaseRate();
+                        //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+") bal="+dShares+", baseRate="+1.0/curr.getBaseRate());
+    
+                        entry.add(curr.getTickerSymbol());
+                        entry.add(curr.getName());
+                        entry.add(price);
+                        entry.add(price - price1);
+                        entry.add(dShares * price);
+                        entry.add((price - price1) / price1);
+                        entry.add((price - price7) / price7);
+                        entry.add((price - price30) / price30);
+                        entry.add((price - price365) / price365);
+    
+                        data.add(entry);
+                        rowCurrencies.add(curr);
                     }
-                    totalBalance += dShares * 1.0 / curr.getBaseRate();
-                    //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+") bal="+dShares+", baseRate="+1.0/curr.getBaseRate());
-
-                    entry.add(curr.getTickerSymbol());
-                    entry.add(curr.getName());
-                    entry.add(price);
-                    entry.add(price - price1);
-                    entry.add(dShares * price);
-                    entry.add((price - price1) / price1);
-                    entry.add((price - price7) / price7);
-                    entry.add((price - price30) / price30);
-                    entry.add((price - price365) / price365);
-
-                    data.add(entry);
-                    rowCurrencies.add(curr);
                 }
             }
+            model.setDataVector(data, columnNames);
+            fixColumnHeaders();
+
+            SGTableModel footerModel = (SGTableModel)footerTable.getModel();
+            Vector<Vector> footerData = footerModel.getDataVector();
+            footerData.clear();
+            Vector<Object> footerRow = new Vector<>();
+            footerRow.add("Total");
+            footerRow.add(null);
+            footerRow.add(null);
+            footerRow.add(null);
+            footerRow.add(totalBalance);
+            footerRow.add(null);
+            footerRow.add(null);
+            footerRow.add(null);
+            footerRow.add(null);  
+            footerData.add(footerRow);
+            footerModel.setDataVector(footerData, columnNames);
         }
-        Vector<Object> footer = new Vector<>();
-        footer.add("Total");
-        footer.add(null);
-        footer.add(null);
-        footer.add(null);
-        footer.add(totalBalance);
-        footer.add(null);
-        footer.add(null);
-        footer.add(null);
-        footer.add(null);
 
-        return new SGTableModel(data, columnNames, rowCurrencies, footer);
-    }
-
-    private Double priceOrNaN(CurrencyType curr, Calendar date, int delta, int priceWindowSize) {
-        try {
-            int backDate = backDays(date, delta);
-            if (haveSnapshotWithinWeek(curr, backDate, priceWindowSize)) {
-                double adjRate = curr.adjustRateForSplitsInt(backDate, curr.getRelativeRate(backDate));
-                //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+"): "+curr.getRelativeRate(backDate)+", "+adjRate);
-                return 1.0 / adjRate;
-            } else {
+        private Double priceOrNaN(CurrencyType curr, Calendar date, int delta, int priceWindowSize) {
+            try {
+                int backDate = backDays(date, delta);
+                if (haveSnapshotWithinWeek(curr, backDate, priceWindowSize)) {
+                    double adjRate = curr.adjustRateForSplitsInt(backDate, curr.getRelativeRate(backDate));
+                    //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+"): "+curr.getRelativeRate(backDate)+", "+adjRate);
+                    return 1.0 / adjRate;
+                } else {
+                    return Double.NaN;
+                }
+            } catch (ArrayIndexOutOfBoundsException e) {
                 return Double.NaN;
             }
-        } catch (ArrayIndexOutOfBoundsException e) {
-            return Double.NaN;
         }
-    }
 
-    // Return the date that is delta days before startDate
-    private int backDays(Calendar startDate, int delta) {
-        Calendar newDate = (Calendar) startDate.clone();
-        newDate.add(Calendar.DAY_OF_MONTH, -delta);
-        return DateUtil.convertCalToInt(newDate);
-    }
-
-    // MD function getRelativeRate(int dt) returns last known rate, even if
-    // price is far from the desired date DT. Return true if the snapshots
-    // contain a rate within a window before the given date.
-    private boolean haveSnapshotWithinWeek(CurrencyType curr, int date, int priceWindowSize) {
-        List<CurrencySnapshot> snapshots = curr.getSnapshots();
-        if (priceWindowSize == INFINITY) {
-            return !snapshots.isEmpty();
+        // Return the date that is delta days before startDate
+        private int backDays(Calendar startDate, int delta) {
+            Calendar newDate = (Calendar) startDate.clone();
+            newDate.add(Calendar.DAY_OF_MONTH, -delta);
+            return DateUtil.convertCalToInt(newDate);
         }
-        for (CurrencySnapshot snap : snapshots) {
-            if (DateUtil.calculateDaysBetween(snap.getDateInt(), date) <= priceWindowSize) {
-                return true;
+
+        // MD function getRelativeRate(int dt) returns last known rate, even if
+        // price is far from the desired date DT. Return true if the snapshots
+        // contain a rate within a window before the given date.
+        private boolean haveSnapshotWithinWeek(CurrencyType curr, int date, int priceWindowSize) {
+            List<CurrencySnapshot> snapshots = curr.getSnapshots();
+            if (priceWindowSize == INFINITY) {
+                return !snapshots.isEmpty();
+            }
+            for (CurrencySnapshot snap : snapshots) {
+                if (DateUtil.calculateDaysBetween(snap.getDateInt(), date) <= priceWindowSize) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private HashMap<CurrencyType, Long> sumBalancesByCurrency(AccountBook book) {
+            HashMap<CurrencyType, Long> totals = new HashMap<>();
+            for (Account acct : AccountUtil.allMatchesForSearch(book, AcctFilter.ALL_ACCOUNTS_FILTER)) {
+                CurrencyType curr = acct.getCurrencyType();
+                Long total = totals.get(curr);
+                total = ((total == null) ? 0L : total) + acct.getCurrentBalance();
+                totals.put(curr, total);
+            }
+            return totals;
+        }
+    
+        // Changing table data model changes headers, which erases their formatting.
+        void fixColumnHeaders() {
+            TableColumnModel cm = getColumnModel();
+            for (int i = 0; i < cm.getColumnCount(); i++) {
+                TableColumn col = cm.getColumn(i);
+                col.setHeaderRenderer(new HeaderRenderer(mdGUI));
             }
         }
-        return false;
+
+        JTable getFooterTable() {
+            return footerTable;
+        }
+
+        void setUnknownPrice(boolean flag) {
+            thisSG.setUnknownPrice(flag);
+            thisSG.refresh();
+        }
+
+        void setZeroShares(boolean flag) {
+            thisSG.setZeroShares(flag);
+            thisSG.refresh();
+        }
+        
+        void setPriceWindow(int value) {
+            thisSG.setPriceWindow(value);
+            thisSG.refresh();
+        }
+
+        SGTableModel getDataModel() {
+            return (SGTableModel) dataModel;
+        }
+
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+
+        // Rendering depends on row (i.e. security's currency) as well as column
+        @Override
+        public TableCellRenderer getCellRenderer(int row, int column) {
+            DefaultTableCellRenderer renderer;
+            switch (columnTypes[column]) {
+                case TEXT_COL:
+                    renderer = new DefaultTableCellRenderer();
+                    renderer.setHorizontalAlignment(LEFT);
+                    break;
+
+                case CURR0_COL:
+                case CURR2_COL:
+                    Vector<CurrencyType> rowCurrencies = getDataModel().getRowCurrencies();
+                    CurrencyType curr;
+                    if (0 <= row && row < rowCurrencies.size()) {
+                        curr = rowCurrencies.get(row);              // Security
+                    } else {
+                        curr = book.getCurrencies().getBaseType(); // Footer reports base currency
+                    }
+                    renderer = new CurrencyRenderer(mdGUI, curr, columnTypes[column].equals(CURR0_COL));
+                    renderer.setHorizontalAlignment(RIGHT);
+                    break;
+
+                case PERCENT_COL:
+                    renderer = new PercentRenderer(mdGUI);
+                    renderer.setHorizontalAlignment(RIGHT);
+                    break;
+
+                default:
+                    renderer = new DefaultTableCellRenderer();
+            }
+            return renderer;
+        }
+
+        @Override
+        public void columnMarginChanged(ChangeEvent event) {
+            final TableColumnModel eventModel = (DefaultTableColumnModel) event.getSource();
+            final TableColumnModel thisModel = this.getColumnModel();
+            final int columnCount = eventModel.getColumnCount();
+
+            for (int i = 0; i < columnCount; i++) {
+                thisModel.getColumn(i).setWidth(eventModel.getColumn(i).getWidth());
+            }
+            repaint();
+        }
+
+        @Override
+        public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
+            Component c = super.prepareRenderer(renderer, row, column);
+            if (!isRowSelected(row))
+                c.setBackground(row % 2 == 0 ? mdGUI.getColors().registerBG1
+                                             : mdGUI.getColors().registerBG2);   // Banded rows
+            return c;
+        }
     }
 
-    private HashMap<CurrencyType, Long> sumBalancesByCurrency(AccountBook book) {
-        HashMap<CurrencyType, Long> totals = new HashMap<>();
-        for (Account acct : AccountUtil.allMatchesForSearch(book, AcctFilter.ALL_ACCOUNTS_FILTER)) {
-            CurrencyType curr = acct.getCurrencyType();
-            Long total = totals.get(curr);
-            total = ((total == null) ? 0L : total) + acct.getCurrentBalance();
-            totals.put(curr, total);
-        }
-        return totals;
-    }
 
+    // TableModel
+    private class SGTableModel extends DefaultTableModel {
+        private final transient Vector<CurrencyType> rowCurrencies;
 
-    //
-    // Private classes:
-    //
-
-    // CurrencyListener
-    private static class CurrencyCallback implements CurrencyListener {
-        private final StockGlance thisSG;
-
-        CurrencyCallback(StockGlance sg) {
-            thisSG = sg;
+        SGTableModel(Vector<Vector<Object>> data, Vector<String> columnNames, Vector<CurrencyType> rowCurrencies) {
+            super(data, columnNames);
+            this.rowCurrencies = rowCurrencies;
         }
 
-        public void currencyTableModified(CurrencyTable table) {
-            thisSG.refresh();
-        }
-    }
+        // Need to define so columns are properly sorted, not treated as strings.
+        @Override
+        public Class<?> getColumnClass(int columnIndex) {
+            switch(columnTypes[columnIndex]) {
+                case TEXT_COL:
+                    return String.class;
 
-    // AccountListener
-    private static class AccountCallback implements AccountListener {
-        private final StockGlance thisSG;
+                case CURR0_COL:
+                case CURR2_COL:
+                    return Double.class;
 
-        AccountCallback(StockGlance sg) {
-            thisSG = sg;
-        }
+                case PERCENT_COL:
+                    return Double.class;
 
-        public void accountAdded(Account parentAccount, Account newAccount) {
-            thisSG.refresh();
-        }
-
-        public void accountBalanceChanged(Account newAccount) {
-            thisSG.refresh();
-        }
-
-        public void accountDeleted(Account parentAccount, Account newAccount) {
-            thisSG.refresh();
-        }
-
-        public void accountModified(Account newAccount) {
-            thisSG.refresh();
-        }
-    }
-
-    // Sliders have a linear scale, but we want to allow a large range of days
-    // (1..365). The numberic value of the slider will not correspond to the
-    // days, but will be translated through this table.
-    static final int INFINITY = -1;
-    static final int[] slider_labels = {1, 7, 14, 30, 40};
-    static final int[] date_windows = {1, 7, 30, 365, INFINITY};
-
-    static int window2lablel(int window)
-    {
-        for (int i = 0; i < date_windows.length; i++) {
-            if (date_windows[i] == window) {
-                return slider_labels[i];
+                default:
+                    return String.class;
             }
         }
-        return window;
+
+        Vector<CurrencyType> getRowCurrencies() {
+            return rowCurrencies;
+        }
     }
 
-    static int label2window(int label)
-    {
-        for (int i = 0; i < slider_labels.length; i++) {
-            if (slider_labels[i] == label) {
-                return date_windows[i];
-            }
-        }
-        return label;
-    }
 
     // JPanel
     private class SGPanel extends JPanel {
@@ -447,173 +551,75 @@ class StockGlance implements HomePageView {
         }
     }
 
-    // TableModel
-    private class SGTableModel extends DefaultTableModel {
-        private final transient Vector<CurrencyType> rowCurrencies;
-        private final transient Vector<Object> footer;
 
-        SGTableModel(Vector<Vector<Object>> data, Vector<String> columnNames, Vector<CurrencyType> rowCurrencies, Vector<Object> footer) {
-            super(data, columnNames);
-            this.rowCurrencies = rowCurrencies;
-            this.footer = footer;
-        }
+    // Sliders have a linear scale, but we want to allow a large range of days
+    // (1..365). The numberic value of the slider will not correspond to the
+    // days, but will be translated through this table.
+    static final int INFINITY = -1;
+    static final int[] slider_labels = {1, 7, 14, 30, 40};
+    static final int[] date_windows = {1, 7, 30, 365, INFINITY};
 
-        // Need to define so columns are properly sorted, not treated as strings.
-        @Override
-        public Class<?> getColumnClass(int columnIndex) {
-            switch(columnTypes[columnIndex]) {
-                case TEXT_COL:
-                    return String.class;
-
-                case CURR0_COL:
-                case CURR2_COL:
-                    return Double.class;
-
-                case PERCENT_COL:
-                    return Double.class;
-
-                default:
-                    return String.class;
+    static int window2lablel(int window)
+    {
+        for (int i = 0; i < date_windows.length; i++) {
+            if (date_windows[i] == window) {
+                return slider_labels[i];
             }
         }
+        return window;
+    }
 
-        Vector<CurrencyType> getRowCurrencies() {
-            return rowCurrencies;
+    static int label2window(int label)
+    {
+        for (int i = 0; i < slider_labels.length; i++) {
+            if (slider_labels[i] == label) {
+                return date_windows[i];
+            }
+        }
+        return label;
+    }
+
+
+
+    // CurrencyListener
+    private static class CurrencyCallback implements CurrencyListener {
+        private final StockGlance thisSG;
+
+        CurrencyCallback(StockGlance sg) {
+            thisSG = sg;
         }
 
-        Vector<Object> getFooterVector() {
-            return footer;
+        public void currencyTableModified(CurrencyTable table) {
+            thisSG.refresh();
         }
     }
 
-    // JTable
-    // Basic functional for tables that display StockGlance information
-    private class BaseSGTable extends JTable {
-        private transient MoneydanceGUI mdGUI;
+    // AccountListener
+    private static class AccountCallback implements AccountListener {
+        private final StockGlance thisSG;
 
-        BaseSGTable(MoneydanceGUI mdGUI, TableModel tableModel) {
-            super(tableModel);
-            this.mdGUI = mdGUI;
+        AccountCallback(StockGlance sg) {
+            thisSG = sg;
         }
 
-        SGTableModel getDataModel() {
-            return (SGTableModel) dataModel;
+        public void accountAdded(Account parentAccount, Account newAccount) {
+            thisSG.refresh();
         }
 
-        @Override
-        public boolean isCellEditable(int row, int column) {
-            return false;
+        public void accountBalanceChanged(Account newAccount) {
+            thisSG.refresh();
         }
 
-        // Rendering depends on row (i.e. security's currency) as well as column
-        @Override
-        public TableCellRenderer getCellRenderer(int row, int column) {
-            DefaultTableCellRenderer renderer;
-            switch (columnTypes[column]) {
-                case TEXT_COL:
-                    renderer = new DefaultTableCellRenderer();
-                    renderer.setHorizontalAlignment(LEFT);
-                    break;
-
-                case CURR0_COL:
-                case CURR2_COL:
-                    Vector<CurrencyType> rowCurrencies = getDataModel().getRowCurrencies();
-                    CurrencyType curr;
-                    if (0 <= row && row < rowCurrencies.size()) {
-                        curr = rowCurrencies.get(row);              // Security
-                    } else {
-                        curr = book.getCurrencies().getBaseType(); // Footer reports base currency
-                    }
-                    renderer = new CurrencyRenderer(mdGUI, curr, columnTypes[column].equals(CURR0_COL));
-                    renderer.setHorizontalAlignment(RIGHT);
-                    break;
-
-                case PERCENT_COL:
-                    renderer = new PercentRenderer(mdGUI);
-                    renderer.setHorizontalAlignment(RIGHT);
-                    break;
-
-                default:
-                    renderer = new DefaultTableCellRenderer();
-            }
-            return renderer;
+        public void accountDeleted(Account parentAccount, Account newAccount) {
+            thisSG.refresh();
         }
 
-        @Override
-        public void columnMarginChanged(ChangeEvent event) {
-            final TableColumnModel eventModel = (DefaultTableColumnModel) event.getSource();
-            final TableColumnModel thisModel = this.getColumnModel();
-            final int columnCount = eventModel.getColumnCount();
-
-            for (int i = 0; i < columnCount; i++) {
-                thisModel.getColumn(i).setWidth(eventModel.getColumn(i).getWidth());
-            }
-            repaint();
+        public void accountModified(Account newAccount) {
+            thisSG.refresh();
         }
     }
 
-    private class SGTable extends BaseSGTable {
-        private final JTable footerTable;
-        private final transient StockGlance thisSG;
-
-        SGTable(MoneydanceGUI mdGUI, StockGlance thisSG, SGTableModel tableModel) {
-            super(mdGUI, tableModel);
-
-            this.setForeground(mdGUI.getColors().registerTextFG);
-            this.setBackground(mdGUI.getColors().registerBG1);
-            this.thisSG = thisSG;
-            fixColumnHeaders();
-            setAutoCreateRowSorter(true);
-            getRowSorter().toggleSortOrder(0); // Default: sort by symbol
-
-            // Create footer table
-            Vector<Vector<Object>> footerData = new Vector<>();
-            footerData.add(tableModel.getFooterVector());
-            footerTable = new BaseSGTable(mdGUI,
-                                          new SGTableModel(footerData, columnNames, new Vector<>(), new Vector<>()));
-
-            // Link body and footer columns
-            // http://stackoverflow.com/questions/2666758/issue-with-resizing-columns-in-a-double-jtable
-            footerTable.setColumnModel(this.getColumnModel());
-            this.getColumnModel().addColumnModelListener(footerTable);
-            footerTable.getColumnModel().addColumnModelListener(this);
-        }
-
-        // Changing table data model changes headers, which erases their formatting.
-        void fixColumnHeaders() {
-            TableColumnModel cm = getColumnModel();
-            for (int i = 0; i < cm.getColumnCount(); i++) {
-                TableColumn col = cm.getColumn(i);
-                col.setHeaderRenderer(new HeaderRenderer(mdGUI));
-            }
-        }
-
-        @Override
-        public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
-            Component c = super.prepareRenderer(renderer, row, column);
-            if (!isRowSelected(row))
-                c.setBackground(row % 2 == 0 ? mdGUI.getColors().registerBG1
-                                             : mdGUI.getColors().registerBG2);   // Banded rows
-            return c;
-        }
-
-        JTable getFooterTable() {
-            return footerTable;
-        }
-
-        void setUnknownPrice(boolean flag) {
-            thisSG.setUnknownPrice(flag);
-        }
-
-        void setZeroShares(boolean flag) {
-            thisSG.setZeroShares(flag);
-        }
-        
-        void setPriceWindow(int value) {
-            thisSG.setPriceWindow(value);
-        }
-    }
-
+    // Renderers
     // Render a currency with given number of fractional digits. NaN or null is an empty cell.
     // Negative values are red.
     private static class CurrencyRenderer extends DefaultTableCellRenderer {
