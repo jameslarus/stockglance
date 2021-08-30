@@ -83,9 +83,9 @@ class StockGlance implements HomePageView {
 
     StockGlance(MoneydanceGUI mdGUI) {
         this.mdGUI = mdGUI;
+        this.table = null;
+        this.tablePane = null;
         this.refresher = new CollapsibleRefresher(StockGlance.this::actuallyRefresh);
-        table = null;
-        tablePane = null;
     }
 
 
@@ -168,14 +168,14 @@ class StockGlance implements HomePageView {
     }
 
     // Preference of which stocks are displayed in the table.
-    private void getPreferences(){
+    private void getPreferences() {
         Account rootAccount = book.getRootAccount();
         displayUnknownPrices = rootAccount.getPreferenceBoolean("StockGlance_displayUnknownPrices", false);
         displayZeroShares = rootAccount.getPreferenceBoolean("StockGlance_displayZeroShares", false);
         priceWindowSize = rootAccount.getPreferenceInt("StockGlance_priceWindow", 7);
     }
 
-    private void savePreferences(){
+    private void savePreferences() {
         Account rootAccount = book.getRootAccount();
         rootAccount.setPreference("StockGlance_displayUnknownPrices", displayUnknownPrices);
         rootAccount.setPreference("StockGlance_displayZeroShares", displayZeroShares);
@@ -225,7 +225,7 @@ class StockGlance implements HomePageView {
 
             if (isMainTable) {
                 // Footer table
-                footerTable = new SGTable(mdGUI, thisSG, book, false, displayUnknownPrices, displayZeroShares, priceWindowSize);
+                this.footerTable = new SGTable(mdGUI, thisSG, book, false, displayUnknownPrices, displayZeroShares, priceWindowSize);
                 SGTableModel footerTableModel = new SGTableModel(new Vector<>(), columnNames, new Vector<>());
                 footerTable.setModel(footerTableModel);
 
@@ -269,7 +269,7 @@ class StockGlance implements HomePageView {
                         Long shares = balances.get(curr);
                         Double dShares = (shares == null) ? 0.0 : curr.getDoubleValue(shares) ;
     
-                        if ((shares == null || shares == 0) && !displayZeroShares){
+                        if ((shares == null || shares == 0) && !displayZeroShares) {
                             continue;
                         }
                         totalBalance += dShares * 1.0 / curr.getBaseRate();
@@ -586,7 +586,7 @@ class StockGlance implements HomePageView {
         private final StockGlance thisSG;
 
         CurrencyCallback(StockGlance sg) {
-            thisSG = sg;
+            this.thisSG = sg;
         }
 
         public void currencyTableModified(CurrencyTable table) {
@@ -599,7 +599,7 @@ class StockGlance implements HomePageView {
         private final StockGlance thisSG;
 
         AccountCallback(StockGlance sg) {
-            thisSG = sg;
+            this.thisSG = sg;
         }
 
         public void accountAdded(Account parentAccount, Account newAccount) {
@@ -634,10 +634,10 @@ class StockGlance implements HomePageView {
             super();
             this.mdGUI = mdGUI;
             this.noDecimals = noDecimals;
-            relativeTo = curr.getRelativeCurrency();
-            noDecimalFormatter = NumberFormat.getNumberInstance();
-            noDecimalFormatter.setMinimumFractionDigits(0);
-            noDecimalFormatter.setMaximumFractionDigits(0);
+            this.relativeTo = curr.getRelativeCurrency();
+            this.noDecimalFormatter = NumberFormat.getNumberInstance();
+            this.noDecimalFormatter.setMinimumFractionDigits(0);
+            this.noDecimalFormatter.setMaximumFractionDigits(0);
         }
 
         boolean isZero(Double value) {
