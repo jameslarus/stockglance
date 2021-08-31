@@ -44,7 +44,6 @@ import com.moneydance.apps.md.controller.FullAccountList;
 import com.moneydance.apps.md.view.gui.select.AccountSelectList;
 import com.moneydance.apps.md.view.resources.MDResourceProvider;
 import com.moneydance.awt.GridC;
-import com.moneydance.util.UiUtil;
 
 import java.util.*;
 import java.text.*;
@@ -56,8 +55,6 @@ import java.awt.*;
 import java.util.List;
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
-import javax.swing.JCheckBox;
-import javax.swing.JSlider;
 import javax.swing.table.*;
 
 
@@ -248,7 +245,7 @@ class StockGlance implements HomePageView {
                 this.getColumnModel().addColumnModelListener(footerTable);
                 footerTable.getColumnModel().addColumnModelListener(this);
 
-                recomputeModel(book, thisSG.getUknownPrices(), thisSG.getZeroShares(), thisSG.getPriceWindow());
+                recomputeModel(book, getUknownPrices(), getZeroShares(), getPriceWindow());
             }
         }
 
@@ -518,22 +515,43 @@ class StockGlance implements HomePageView {
             super();
             this.mdGUI = mdGUI;
             this.table = table;
-      
+
+            JPanel header = new JPanel();
+            header.setLayout(new BoxLayout(header, BoxLayout.LINE_AXIS));
+
+            header.setForeground(mdGUI.getColors().filterBarFG);
+            header.setBackground(mdGUI.getColors().filterBarBG);
+            JLabel label = new JLabel("StockGlance");
+            label.setForeground(mdGUI.getColors().filterBarFG);
+            JButton settings = new JButton("Edit");
+            settings.setForeground(mdGUI.getColors().filterBarFG);
+            settings.setBackground(mdGUI.getColors().filterBarBtnBG);
+            header.add(label);
+            header.add(Box.createHorizontalGlue());
+            header.add(settings);
+            header.add(Box.createHorizontalGlue());
+            settings.addChangeListener(e -> openConfigPanel());
+
             this.setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
+            this.add(header);
             this.add(this.table.getTableHeader());
             this.add(this.table);
             this.add(this.table.getFooterTable());
-            this.setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder,
-                    BorderFactory.createEmptyBorder(0, 0, 0, 0)));
+            this.setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder, 
+                                BorderFactory.createEmptyBorder(0, 0, 0, 0)));
+            
+        }
+
+        private void openConfigPanel() {
             this.configPanel = getConfigPanel();
-            frame = new JFrame();
-            frame.add(this.configPanel);
-            frame.pack();
-            frame.setVisible(true);
+            this.frame = new JFrame();
+            this.frame.add(this.configPanel);
+            this.frame.pack();
+            this.frame.setVisible(true);
         }
 
         protected synchronized JPanel getConfigPanel() {
-            if (false && this.configPanel != null) {
+            if (this.configPanel != null) {
                 return this.configPanel;
             } else {
                 JPanel cPanel = new JPanel(new GridBagLayout());
@@ -557,27 +575,29 @@ class StockGlance implements HomePageView {
                 JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
                 JLabel sliderLabel = new JLabel("Valid price window", javax.swing.SwingConstants.CENTER);
                 sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-                JSlider priceWindow = new JSlider(javax.swing.SwingConstants.HORIZONTAL, 1, 40, 7);
-                priceWindow.setValue(window2lablel(this.table.getPriceWindow()));
+                JSlider windowSlider = new JSlider(javax.swing.SwingConstants.HORIZONTAL, 1, 40, 7);
+                windowSlider.setValue(window2lablel(this.table.getPriceWindow()));
                 Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
                 labelTable.put(slider_labels[0], new JLabel("day"));
                 labelTable.put(slider_labels[1], new JLabel("week"));
                 labelTable.put(slider_labels[2], new JLabel("month"));
                 labelTable.put(slider_labels[3], new JLabel("year"));
                 labelTable.put(slider_labels[4], new JLabel("\u221E"));
-                priceWindow.setLabelTable(labelTable);
-                priceWindow.setSnapToTicks(true);
-                priceWindow.setPaintTicks(true);
-                priceWindow.setPaintLabels(true);
+                windowSlider.setLabelTable(labelTable);
+                windowSlider.setSnapToTicks(true);
+                windowSlider.setPaintTicks(true);
+                windowSlider.setPaintLabels(true);
+                Dimension d = windowSlider.getPreferredSize();
+                windowSlider.setPreferredSize(new Dimension((d.width * 2) / 1, d.height));
                 sliderPanel.add(sliderLabel);
-                sliderPanel.add(priceWindow);
+                sliderPanel.add(windowSlider);
 
-                priceWindow.addChangeListener(e -> this.table.setPriceWindow(label2window(priceWindow.getValue())));
+                windowSlider.addChangeListener(e -> this.table.setPriceWindow(label2window(windowSlider.getValue())));
 
                 int y = 0;
                 cPanel.add(checkboxPanel, GridC.getc(1, y).field());
                 cPanel.add(sliderPanel, GridC.getc(2, y++).field());
-                cPanel.add(new JLabel(UiUtil.getLabelText(this.mdGUI, "report_account")),GridC.getc(0, y++).label());
+                cPanel.add(new JLabel("Accounts:"),GridC.getc(0, y++).label());
                 this.accountList.layoutComponentUI();
                 cPanel.add(this.accountList.getView(), GridC.getc(1, y).colspan(2).field().wxy(1.0F, 1.0F).fillboth());
                 return cPanel;
