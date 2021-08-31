@@ -29,6 +29,7 @@ http://jakarta.apache.org/ant/index.html
   <path id="classpath">
     <pathelement path="../lib/extadmin.jar"/>
     <pathelement path="../lib/moneydance-dev.jar"/>
+    <pathelement path="/Applications/Moneydance.app/Contents/Java/moneydance.jar"/>
   </path>
 
   <target name="init">

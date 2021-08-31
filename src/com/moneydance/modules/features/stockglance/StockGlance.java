@@ -39,6 +39,12 @@ import com.moneydance.apps.md.view.HomePageView;
 import com.moneydance.awt.CollapsibleRefresher;
 import com.moneydance.apps.md.view.gui.MoneydanceGUI;
 import com.moneydance.apps.md.view.gui.MoneydanceLAF;
+import com.moneydance.apps.md.controller.AccountFilter;
+import com.moneydance.apps.md.controller.FullAccountList;
+import com.moneydance.apps.md.view.gui.select.AccountSelectList;
+import com.moneydance.apps.md.view.resources.MDResourceProvider;
+import com.moneydance.awt.GridC;
+import com.moneydance.util.UiUtil;
 
 import java.util.*;
 import java.text.*;
@@ -79,6 +85,7 @@ class StockGlance implements HomePageView {
     private static final String CURR2_COL = "Currency2";
     private static final String PERCENT_COL = "Percent";
     private final String[] columnTypes = {TEXT_COL, TEXT_COL, CURR2_COL, CURR2_COL, CURR0_COL, PERCENT_COL, PERCENT_COL, PERCENT_COL, PERCENT_COL};
+    static final int INFINITY = -1;
 
 
     StockGlance(MoneydanceGUI mdGUI) {
@@ -112,8 +119,8 @@ class StockGlance implements HomePageView {
             if (tablePane == null) {
                 this.book = book;
                 getPreferences();
-                table = new SGTable(mdGUI, this, book, true, displayUnknownPrices, displayZeroShares, priceWindowSize);
-                tablePane = new SGPanel(mdGUI, table, displayUnknownPrices, displayZeroShares, priceWindowSize);
+                table = new SGTable(mdGUI, this, book, true);
+                tablePane = new SGPanel(mdGUI, table);
             }
             return tablePane;
         }
@@ -182,17 +189,23 @@ class StockGlance implements HomePageView {
         rootAccount.setPreference("StockGlance_priceWindow", priceWindowSize);
     }
 
-    void setUnknownPrice(boolean flag) {
+    private boolean getUknownPrices() { return displayUnknownPrices; }
+
+    private void setUnknownPrice(boolean flag) {
         displayUnknownPrices = flag;
         savePreferences();
     }
 
-    void setZeroShares(boolean flag) {
+    private boolean getZeroShares() { return displayZeroShares; }
+
+    private void setZeroShares(boolean flag) {
         displayZeroShares = flag;
         savePreferences();
     }
 
-    void setPriceWindow(int value) {
+    private int getPriceWindow() { return priceWindowSize; }
+
+    private void setPriceWindow(int value) {
         priceWindowSize = value;
         savePreferences();
     }
@@ -207,7 +220,7 @@ class StockGlance implements HomePageView {
         private transient StockGlance thisSG;
         private SGTable footerTable = null;
 
-        SGTable(MoneydanceGUI mdGUI, StockGlance thisSG, AccountBook book, boolean isMainTable, boolean displayUnknownPrices, boolean displayZeroShares, int priceWindowSize) {
+        SGTable(MoneydanceGUI mdGUI, StockGlance thisSG, AccountBook book, boolean isMainTable) {
             super();
 
             this.mdGUI = mdGUI;
@@ -225,7 +238,7 @@ class StockGlance implements HomePageView {
 
             if (isMainTable) {
                 // Footer table
-                this.footerTable = new SGTable(mdGUI, thisSG, book, false, displayUnknownPrices, displayZeroShares, priceWindowSize);
+                this.footerTable = new SGTable(mdGUI, thisSG, book, false);
                 SGTableModel footerTableModel = new SGTableModel(new Vector<>(), columnNames, new Vector<>());
                 footerTable.setModel(footerTableModel);
 
@@ -235,7 +248,7 @@ class StockGlance implements HomePageView {
                 this.getColumnModel().addColumnModelListener(footerTable);
                 footerTable.getColumnModel().addColumnModelListener(this);
 
-                recomputeModel(book, displayUnknownPrices, displayZeroShares, priceWindowSize);
+                recomputeModel(book, thisSG.getUknownPrices(), thisSG.getZeroShares(), thisSG.getPriceWindow());
             }
         }
 
@@ -360,7 +373,7 @@ class StockGlance implements HomePageView {
         }
     
         // Changing table data model changes headers, which erases their formatting.
-        void fixColumnHeaders() {
+        private void fixColumnHeaders() {
             TableColumnModel cm = getColumnModel();
             for (int i = 0; i < cm.getColumnCount(); i++) {
                 TableColumn col = cm.getColumn(i);
@@ -368,26 +381,32 @@ class StockGlance implements HomePageView {
             }
         }
 
-        JTable getFooterTable() {
+        private JTable getFooterTable() {
             return footerTable;
         }
 
-        void setUnknownPrice(boolean flag) {
+        private boolean getUknownPrices() { return thisSG.getUknownPrices(); }
+
+        private void setUnknownPrice(boolean flag) {
             thisSG.setUnknownPrice(flag);
             thisSG.refresh();
         }
 
-        void setZeroShares(boolean flag) {
+        private boolean getZeroShares() { return thisSG.getZeroShares(); }
+
+        private void setZeroShares(boolean flag) {
             thisSG.setZeroShares(flag);
             thisSG.refresh();
         }
         
-        void setPriceWindow(int value) {
+        private int getPriceWindow() { return thisSG.getPriceWindow(); }
+
+        private void setPriceWindow(int value) {
             thisSG.setPriceWindow(value);
             thisSG.refresh();
         }
 
-        SGTableModel getDataModel() {
+        private SGTableModel getDataModel() {
             return (SGTableModel) dataModel;
         }
 
@@ -489,94 +508,126 @@ class StockGlance implements HomePageView {
 
     // JPanel
     private class SGPanel extends JPanel {
-        SGPanel(MoneydanceGUI mdGUI, SGTable table, boolean displayUnknownPrices, boolean displayZeroShares, int priceWindowSize) {
+        transient MoneydanceGUI mdGUI;
+        SGTable table;
+        private JPanel configPanel;
+        private AccountSelectList accountList;
+        JFrame frame;
+
+        SGPanel(MoneydanceGUI mdGUI, SGTable table) {
             super();
-            JPanel controlPanel = new JPanel();
-            //controlPanel.setForeground(mdGUI.getColors().filterBarFG);
-            //controlPanel.setBackground(Color.RED);//mdGUI.getColors().filterBarBG);
-            controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.LINE_AXIS));
-
-            JCheckBox unknownPriceCheckbox = new JCheckBox("Display unknown prices");
-            unknownPriceCheckbox.setForeground(mdGUI.getColors().filterBarFG);
-            unknownPriceCheckbox.setBackground(mdGUI.getColors().filterBarBtnBG);
-            unknownPriceCheckbox.setSelected(displayUnknownPrices);
-            JCheckBox zeroSharesCheckbox = new JCheckBox("Display zero shares");
-            zeroSharesCheckbox.setForeground(mdGUI.getColors().filterBarFG);
-            zeroSharesCheckbox.setBackground(mdGUI.getColors().filterBarBtnBG);
-            zeroSharesCheckbox.setSelected(displayZeroShares);
-            JPanel checkPanel = new JPanel(new GridLayout(0, 1));
-            checkPanel.setForeground(mdGUI.getColors().filterBarFG);
-            checkPanel.setBackground(mdGUI.getColors().filterBarBtnBG);
-            checkPanel.add(unknownPriceCheckbox);
-            checkPanel.add(zeroSharesCheckbox);
-            controlPanel.add(checkPanel);
-
-            unknownPriceCheckbox.addItemListener(e -> table.setUnknownPrice(unknownPriceCheckbox.isSelected()));
-            zeroSharesCheckbox.addItemListener(e -> table.setZeroShares(zeroSharesCheckbox.isSelected()));
-
-            JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
-            sliderPanel.setForeground(mdGUI.getColors().filterBarFG);
-            sliderPanel.setBackground(mdGUI.getColors().filterBarBtnBG);
-            JLabel sliderLabel = new JLabel("Valid price window", javax.swing.SwingConstants.CENTER);
-            sliderLabel.setForeground(mdGUI.getColors().filterBarFG);
-            sliderLabel.setBackground(mdGUI.getColors().filterBarBtnBG);
-            sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-            JSlider priceWindow = new JSlider(javax.swing.SwingConstants.HORIZONTAL, 1, 40, 7);
-            priceWindow.setForeground(mdGUI.getColors().filterBarFG);
-            priceWindow.setBackground(mdGUI.getColors().filterBarBtnBG);
-            priceWindow.setValue(window2lablel(priceWindowSize));
-
-            Hashtable<Integer, JLabel> labelTable = new Hashtable<> ();
-            labelTable.put(slider_labels[0], new JLabel("day"));
-            labelTable.put(slider_labels[1], new JLabel("week"));
-            labelTable.put(slider_labels[2], new JLabel("month"));
-            labelTable.put(slider_labels[3], new JLabel("year"));
-            labelTable.put(slider_labels[4], new JLabel("\u221E"));
-            priceWindow.setLabelTable(labelTable);
-            priceWindow.setSnapToTicks(true);
-            priceWindow.setPaintTicks(true);
-            priceWindow.setPaintLabels(true);
-            sliderPanel.add(sliderLabel);
-            sliderPanel.add(priceWindow);
-            controlPanel.add(sliderPanel);
-         
-            priceWindow.addChangeListener(e -> table.setPriceWindow(label2window(priceWindow.getValue())));
-
+            this.mdGUI = mdGUI;
+            this.table = table;
+      
             this.setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
-            this.add(controlPanel);
-            this.add(table.getTableHeader());
-            this.add(table);
-            this.add(table.getFooterTable());
-            this.setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder, BorderFactory.createEmptyBorder(0, 0, 0, 0)));
+            this.add(this.table.getTableHeader());
+            this.add(this.table);
+            this.add(this.table.getFooterTable());
+            this.setBorder(BorderFactory.createCompoundBorder(MoneydanceLAF.homePageBorder,
+                    BorderFactory.createEmptyBorder(0, 0, 0, 0)));
+            this.configPanel = getConfigPanel();
+            frame = new JFrame();
+            frame.add(this.configPanel);
+            frame.pack();
+            frame.setVisible(true);
         }
-    }
 
+        protected synchronized JPanel getConfigPanel() {
+            if (false && this.configPanel != null) {
+                return this.configPanel;
+            } else {
+                JPanel cPanel = new JPanel(new GridBagLayout());
+                cPanel.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+                this.setupAccountSelector();
 
-    // Sliders have a linear scale, but we want to allow a large range of days
-    // (1..365). The numberic value of the slider will not correspond to the
-    // days, but will be translated through this table.
-    static final int INFINITY = -1;
-    static final int[] slider_labels = {1, 7, 14, 30, 40};
-    static final int[] date_windows = {1, 7, 30, 365, INFINITY};
+                cPanel.setForeground(mdGUI.getColors().defaultTextForeground);
+                cPanel.setBackground(mdGUI.getColors().defaultBackground);
 
-    static int window2lablel(int window)
-    {
-        for (int i = 0; i < date_windows.length; i++) {
-            if (date_windows[i] == window) {
-                return slider_labels[i];
+                JCheckBox unknownPriceCheckbox = new JCheckBox("Display unknown prices");
+                unknownPriceCheckbox.setSelected(this.table.getUknownPrices());
+                JCheckBox zeroSharesCheckbox = new JCheckBox("Display zero shares");
+                zeroSharesCheckbox.setSelected(this.table.getZeroShares());
+                JPanel checkboxPanel = new JPanel(new GridLayout(0, 1));
+                checkboxPanel.add(unknownPriceCheckbox);
+                checkboxPanel.add(zeroSharesCheckbox);
+
+                unknownPriceCheckbox.addItemListener(e -> this.table.setUnknownPrice(unknownPriceCheckbox.isSelected()));
+                zeroSharesCheckbox.addItemListener(e -> this.table.setZeroShares(zeroSharesCheckbox.isSelected()));
+
+                JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
+                JLabel sliderLabel = new JLabel("Valid price window", javax.swing.SwingConstants.CENTER);
+                sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+                JSlider priceWindow = new JSlider(javax.swing.SwingConstants.HORIZONTAL, 1, 40, 7);
+                priceWindow.setValue(window2lablel(this.table.getPriceWindow()));
+                Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
+                labelTable.put(slider_labels[0], new JLabel("day"));
+                labelTable.put(slider_labels[1], new JLabel("week"));
+                labelTable.put(slider_labels[2], new JLabel("month"));
+                labelTable.put(slider_labels[3], new JLabel("year"));
+                labelTable.put(slider_labels[4], new JLabel("\u221E"));
+                priceWindow.setLabelTable(labelTable);
+                priceWindow.setSnapToTicks(true);
+                priceWindow.setPaintTicks(true);
+                priceWindow.setPaintLabels(true);
+                sliderPanel.add(sliderLabel);
+                sliderPanel.add(priceWindow);
+
+                priceWindow.addChangeListener(e -> this.table.setPriceWindow(label2window(priceWindow.getValue())));
+
+                int y = 0;
+                cPanel.add(checkboxPanel, GridC.getc(1, y).field());
+                cPanel.add(sliderPanel, GridC.getc(2, y++).field());
+                cPanel.add(new JLabel(UiUtil.getLabelText(this.mdGUI, "report_account")),GridC.getc(0, y++).label());
+                this.accountList.layoutComponentUI();
+                cPanel.add(this.accountList.getView(), GridC.getc(1, y).colspan(2).field().wxy(1.0F, 1.0F).fillboth());
+                return cPanel;
             }
         }
-        return window;
-    }
 
-    static int label2window(int label)
-    {
-        for (int i = 0; i < slider_labels.length; i++) {
-            if (slider_labels[i] == label) {
-                return date_windows[i];
-            }
+        private void setupAccountSelector() {
+            AccountFilter accountFilter = new AccountFilter("all_securities");
+            accountFilter.addAllowedType(Account.AccountType.INVESTMENT);
+            accountFilter.addAllowedType(Account.AccountType.SECURITY);
+            FullAccountList fullAccountList = new FullAccountList(book, accountFilter, true);
+            accountFilter.setFullList(fullAccountList);
+            this.accountList = new AccountSelectList(this.mdGUI);
+            this.accountList.setAccountFilter(accountFilter);
+            this.accountList.setAutoSelectChildAccounts(true);
         }
-        return label;
+
+        @Override
+        public void removeAll() {
+            if (this.configPanel != null) {
+                this.configPanel.removeAll();
+                this.configPanel = null;
+            }
+            super.removeAll();
+        }
+
+
+        // Sliders have a linear scale, but we want to allow a large range of days
+        // (1..365). The numberic value of the slider will not correspond to the
+        // days, but will be translated through this table.
+        final int[] slider_labels = { 1, 7, 14, 30, 40 };
+        final int[] date_windows = { 1, 7, 30, 365, INFINITY };
+
+        private int window2lablel(int window) {
+            for (int i = 0; i < date_windows.length; i++) {
+                if (date_windows[i] == window) {
+                    return slider_labels[i];
+                }
+            }
+            return window;
+        }
+
+        private int label2window(int label) {
+            for (int i = 0; i < slider_labels.length; i++) {
+                if (slider_labels[i] == label) {
+                    return date_windows[i];
+                }
+            }
+            return label;
+        }
     }
 
 
