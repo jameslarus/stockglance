@@ -42,11 +42,13 @@ import com.moneydance.apps.md.view.gui.MoneydanceLAF;
 import com.moneydance.apps.md.controller.AccountFilter;
 import com.moneydance.apps.md.controller.FullAccountList;
 import com.moneydance.apps.md.view.gui.select.AccountSelectList;
+import com.moneydance.apps.md.view.gui.reporttool.GraphReportUtil;
 import com.moneydance.apps.md.view.resources.MDResourceProvider;
 import com.moneydance.awt.GridC;
 
 import java.util.*;
 import java.text.*;
+import java.util.stream.*;
 
 import static javax.swing.SwingConstants.LEFT;
 import static javax.swing.SwingConstants.RIGHT;
@@ -66,6 +68,7 @@ class StockGlance implements HomePageView {
     private SGTable table;
     private SGPanel tablePane;
 
+    private String displayAccounts;
     private boolean displayUnknownPrices = false;
     private boolean displayZeroShares = false;
     private int priceWindowSize = 7;
@@ -150,7 +153,7 @@ class StockGlance implements HomePageView {
     private void actuallyRefresh() {
         synchronized (this) {
             if (table != null) {
-                table.recomputeModel(book, displayUnknownPrices, displayZeroShares, priceWindowSize);
+                table.recomputeModel(book, displayAccounts, displayUnknownPrices, displayZeroShares, priceWindowSize);
             }
         }
         if (tablePane != null) {
@@ -174,6 +177,7 @@ class StockGlance implements HomePageView {
     // Preference of which stocks are displayed in the table.
     private void getPreferences() {
         Account rootAccount = book.getRootAccount();
+        displayAccounts = rootAccount.getPreference("StockGlance_displayAccounts", "");
         displayUnknownPrices = rootAccount.getPreferenceBoolean("StockGlance_displayUnknownPrices", false);
         displayZeroShares = rootAccount.getPreferenceBoolean("StockGlance_displayZeroShares", false);
         priceWindowSize = rootAccount.getPreferenceInt("StockGlance_priceWindow", 7);
@@ -181,9 +185,17 @@ class StockGlance implements HomePageView {
 
     private void savePreferences() {
         Account rootAccount = book.getRootAccount();
+        rootAccount.setPreference("StockGlance_displayAccounts", displayAccounts);
         rootAccount.setPreference("StockGlance_displayUnknownPrices", displayUnknownPrices);
         rootAccount.setPreference("StockGlance_displayZeroShares", displayZeroShares);
         rootAccount.setPreference("StockGlance_priceWindow", priceWindowSize);
+    }
+
+    private String getDisplayAccounts() { return displayAccounts; }
+
+    private void setDisplayAccounts(String accounts) {
+        displayAccounts = accounts;
+        savePreferences();
     }
 
     private boolean getUknownPrices() { return displayUnknownPrices; }
@@ -216,6 +228,7 @@ class StockGlance implements HomePageView {
         transient MoneydanceGUI mdGUI;
         private transient StockGlance thisSG;
         private SGTable footerTable = null;
+        private HashSet accountTable = null;
 
         SGTable(MoneydanceGUI mdGUI, StockGlance thisSG, AccountBook book, boolean isMainTable) {
             super();
@@ -245,11 +258,11 @@ class StockGlance implements HomePageView {
                 this.getColumnModel().addColumnModelListener(footerTable);
                 footerTable.getColumnModel().addColumnModelListener(this);
 
-                recomputeModel(book, getUknownPrices(), getZeroShares(), getPriceWindow());
+                recomputeModel(book, getDisplayAccounts(), getUknownPrices(), getZeroShares(), getPriceWindow());
             }
         }
 
-        public void recomputeModel(AccountBook book, boolean displayUnknownPrices, boolean displayZeroShares, int priceWindowSize) 
+        public void recomputeModel(AccountBook book, String displayAccounts, boolean displayUnknownPrices, boolean displayZeroShares, int priceWindowSize) 
         {
             CurrencyTable ct = book.getCurrencies();
             java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
@@ -265,7 +278,9 @@ class StockGlance implements HomePageView {
             Double totalBalance = 0.0;
     
             for (CurrencyType curr : allCurrencies) {
-                if (!curr.getHideInUI() && curr.getCurrencyType() == CurrencyType.Type.SECURITY) {
+                if (!curr.getHideInUI()
+                    && curr.getCurrencyType() == CurrencyType.Type.SECURITY
+                    && (accountTable != null && accountTable.contains(curr.getUUID()))) {//TODO
                     Double price = priceOrNaN(curr, today, 0, priceWindowSize);
                     Double price1 = priceOrNaN(curr, today, 1, priceWindowSize);
                     Double price7 = priceOrNaN(curr, today, 7, priceWindowSize);
@@ -380,6 +395,17 @@ class StockGlance implements HomePageView {
 
         private JTable getFooterTable() {
             return footerTable;
+        }
+
+        private String getDisplayAccounts() { return thisSG.getDisplayAccounts(); }
+
+        private void setDisplayAccounts(String accounts) {
+            thisSG.setDisplayAccounts(accounts);
+            thisSG.refresh();
+        }
+
+        private void setAccounts(HashSet accounts) {
+            this.accountTable = accounts;
         }
 
         private boolean getUknownPrices() { return thisSG.getUknownPrices(); }
@@ -506,34 +532,32 @@ class StockGlance implements HomePageView {
     // JPanel
     private class SGPanel extends JPanel {
         transient MoneydanceGUI mdGUI;
-        SGTable table;
+        private SGTable table;
         private JPanel configPanel;
         private AccountSelectList accountList;
-        JFrame frame;
+        private JFrame frame;
 
         SGPanel(MoneydanceGUI mdGUI, SGTable table) {
             super();
             this.mdGUI = mdGUI;
             this.table = table;
 
-            JPanel header = new JPanel();
-            header.setLayout(new BoxLayout(header, BoxLayout.LINE_AXIS));
-
-            header.setForeground(mdGUI.getColors().filterBarFG);
-            header.setBackground(mdGUI.getColors().filterBarBG);
-            JLabel label = new JLabel("StockGlance");
-            label.setForeground(mdGUI.getColors().filterBarFG);
-            JButton settings = new JButton("Edit");
-            settings.setForeground(mdGUI.getColors().filterBarFG);
-            settings.setBackground(mdGUI.getColors().filterBarBtnBG);
-            header.add(label);
-            header.add(Box.createHorizontalGlue());
-            header.add(settings);
-            header.add(Box.createHorizontalGlue());
-            settings.addChangeListener(e -> openConfigPanel());
+            JPanel headerPanel = new JPanel();
+            headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.LINE_AXIS));
+            headerPanel.setForeground(mdGUI.getColors().filterBarFG);
+            headerPanel.setBackground(mdGUI.getColors().filterBarBG);
+            JLabel titleLabel = new JLabel("StockGlance");
+            titleLabel.setForeground(mdGUI.getColors().filterBarFG);
+            JButton editButton = new JButton("Edit");
+            editButton.setForeground(mdGUI.getColors().filterBarFG);
+            editButton.setBackground(mdGUI.getColors().filterBarBtnBG);
+            headerPanel.add(titleLabel);
+            headerPanel.add(Box.createHorizontalGlue());
+            headerPanel.add(editButton);
+            editButton.addActionListener(e -> openConfigPanel());
 
             this.setLayout(new BoxLayout(this, BoxLayout.PAGE_AXIS));
-            this.add(header);
+            this.add(headerPanel);
             this.add(this.table.getTableHeader());
             this.add(this.table);
             this.add(this.table.getFooterTable());
@@ -562,21 +586,15 @@ class StockGlance implements HomePageView {
                 cPanel.setBackground(mdGUI.getColors().defaultBackground);
 
                 JCheckBox unknownPriceCheckbox = new JCheckBox("Display unknown prices");
-                unknownPriceCheckbox.setSelected(this.table.getUknownPrices());
                 JCheckBox zeroSharesCheckbox = new JCheckBox("Display zero shares");
-                zeroSharesCheckbox.setSelected(this.table.getZeroShares());
                 JPanel checkboxPanel = new JPanel(new GridLayout(0, 1));
                 checkboxPanel.add(unknownPriceCheckbox);
                 checkboxPanel.add(zeroSharesCheckbox);
-
-                unknownPriceCheckbox.addItemListener(e -> this.table.setUnknownPrice(unknownPriceCheckbox.isSelected()));
-                zeroSharesCheckbox.addItemListener(e -> this.table.setZeroShares(zeroSharesCheckbox.isSelected()));
 
                 JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
                 JLabel sliderLabel = new JLabel("Valid price window", javax.swing.SwingConstants.CENTER);
                 sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
                 JSlider windowSlider = new JSlider(javax.swing.SwingConstants.HORIZONTAL, 1, 40, 7);
-                windowSlider.setValue(window2lablel(this.table.getPriceWindow()));
                 Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
                 labelTable.put(slider_labels[0], new JLabel("day"));
                 labelTable.put(slider_labels[1], new JLabel("week"));
@@ -592,14 +610,37 @@ class StockGlance implements HomePageView {
                 sliderPanel.add(sliderLabel);
                 sliderPanel.add(windowSlider);
 
-                windowSlider.addChangeListener(e -> this.table.setPriceWindow(label2window(windowSlider.getValue())));
+                resetUI(unknownPriceCheckbox, zeroSharesCheckbox, windowSlider);
+
+                JPanel buttonPanel = new JPanel(new GridLayout(1, 0));
+                JButton resetButton = new JButton("Reset");
+                resetButton.addActionListener(e -> resetUI(unknownPriceCheckbox, zeroSharesCheckbox, windowSlider));
+                JButton cancelButton = new JButton("Cancel");
+                cancelButton.addActionListener(e -> {
+                    resetUI(unknownPriceCheckbox, zeroSharesCheckbox, windowSlider);
+                    this.frame.setVisible(false);
+                });
+                JButton okButton = new JButton("OK");
+                okButton.addActionListener(e -> {
+                    this.table.setDisplayAccounts(GraphReportUtil.encodeAcctList(this.accountList));
+                    this.table.setAccounts((HashSet)this.accountList.getAccountFilter().getAllIncluded());
+                    this.table.setUnknownPrice(unknownPriceCheckbox.isSelected());
+                    this.table.setZeroShares(zeroSharesCheckbox.isSelected());
+                    this.table.setPriceWindow(label2window(windowSlider.getValue()));
+                    this.frame.setVisible(false);
+                });
+                buttonPanel.add(resetButton);
+                buttonPanel.add(Box.createHorizontalGlue());
+                buttonPanel.add(cancelButton);
+                buttonPanel.add(okButton);
 
                 int y = 0;
                 cPanel.add(checkboxPanel, GridC.getc(1, y).field());
                 cPanel.add(sliderPanel, GridC.getc(2, y++).field());
                 cPanel.add(new JLabel("Accounts:"),GridC.getc(0, y++).label());
                 this.accountList.layoutComponentUI();
-                cPanel.add(this.accountList.getView(), GridC.getc(1, y).colspan(2).field().wxy(1.0F, 1.0F).fillboth());
+                cPanel.add(this.accountList.getView(), GridC.getc(1, y++).colspan(2).field().wxy(1.0F, 1.0F).fillboth());
+                cPanel.add(buttonPanel, GridC.getc(0, y).west().colspan(3).label());
                 return cPanel;
             }
         }
@@ -613,6 +654,13 @@ class StockGlance implements HomePageView {
             this.accountList = new AccountSelectList(this.mdGUI);
             this.accountList.setAccountFilter(accountFilter);
             this.accountList.setAutoSelectChildAccounts(true);
+        }
+
+        private void resetUI(JCheckBox unknownPriceCheckbox, JCheckBox zeroSharesCheckbox, JSlider windowSlider) {
+            GraphReportUtil.selectIndices(this.mdGUI.getCurrentBook(), this.table.getDisplayAccounts(), this.accountList);
+            unknownPriceCheckbox.setSelected(this.table.getUknownPrices());
+            zeroSharesCheckbox.setSelected(this.table.getZeroShares());
+            windowSlider.setValue(this.table.getPriceWindow());
         }
 
         @Override
