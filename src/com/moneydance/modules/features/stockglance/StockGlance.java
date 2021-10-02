@@ -41,23 +41,25 @@ import com.moneydance.apps.md.view.gui.MoneydanceGUI;
 import com.moneydance.apps.md.view.gui.MoneydanceLAF;
 import com.moneydance.apps.md.controller.AccountFilter;
 import com.moneydance.apps.md.controller.FullAccountList;
-import com.moneydance.apps.md.view.gui.select.AccountSelectList;
-import com.moneydance.apps.md.view.gui.reporttool.GraphReportUtil;
 import com.moneydance.apps.md.view.resources.MDResourceProvider;
 import com.moneydance.awt.GridC;
 
-import java.util.*;
 import java.text.*;
+import java.util.*;
+import java.util.List;
 import java.util.stream.*;
+
+import java.awt.*;
+import java.awt.Component;
+import java.awt.event.*;
+
+import javax.swing.*;
+import javax.swing.border.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.table.*;
 
 import static javax.swing.SwingConstants.LEFT;
 import static javax.swing.SwingConstants.RIGHT;
-
-import java.awt.*;
-import java.util.List;
-import javax.swing.*;
-import javax.swing.event.ChangeEvent;
-import javax.swing.table.*;
 
 
 // Home page component to display active stock prices and returns.
@@ -68,10 +70,10 @@ class StockGlance implements HomePageView {
     private SGTable table;
     private SGPanel tablePane;
 
-    private String displayAccounts;
-    private boolean displayUnknownPrices = false;
-    private boolean displayZeroShares = false;
-    private int priceWindowSize = 7;
+    private String displayedSecuritiesList;         // Comma-separated list of security to display
+    private boolean allowPartialPrices = false;     // Display even if not all prices are available
+    private boolean displayZeroShares = false;      // Display even if no shares are owned
+    private int timelySnapshotInterval = 7;         // Days to look back to find security price (-1 => infinity)
 
     private final CurrencyCallback currencyTableCallback = new CurrencyCallback(this);
     private final AccountCallback allAccountsCallback = new AccountCallback(this);
@@ -153,7 +155,7 @@ class StockGlance implements HomePageView {
     private void actuallyRefresh() {
         synchronized (this) {
             if (table != null) {
-                table.recomputeModel(book, displayAccounts, displayUnknownPrices, displayZeroShares, priceWindowSize);
+                table.recomputeModel(book, displayedSecuritiesList, allowPartialPrices, displayZeroShares, timelySnapshotInterval);
             }
         }
         if (tablePane != null) {
@@ -177,31 +179,31 @@ class StockGlance implements HomePageView {
     // Preference of which stocks are displayed in the table.
     private void getPreferences() {
         Account rootAccount = book.getRootAccount();
-        displayAccounts = rootAccount.getPreference("StockGlance_displayAccounts", "");
-        displayUnknownPrices = rootAccount.getPreferenceBoolean("StockGlance_displayUnknownPrices", false);
-        displayZeroShares = rootAccount.getPreferenceBoolean("StockGlance_displayZeroShares", false);
-        priceWindowSize = rootAccount.getPreferenceInt("StockGlance_priceWindow", 7);
+        displayedSecuritiesList = rootAccount.getPreference("StockGlance_displayedSecurities", "");
+        allowPartialPrices = rootAccount.getPreferenceBoolean("StockGlance_DisplayPartialPrices", false);
+        displayZeroShares = rootAccount.getPreferenceBoolean("StockGlance_DisplayZeroShares", false);
+        timelySnapshotInterval = rootAccount.getPreferenceInt("StockGlance_TimelyWindow", 7);
     }
 
     private void savePreferences() {
         Account rootAccount = book.getRootAccount();
-        rootAccount.setPreference("StockGlance_displayAccounts", displayAccounts);
-        rootAccount.setPreference("StockGlance_displayUnknownPrices", displayUnknownPrices);
-        rootAccount.setPreference("StockGlance_displayZeroShares", displayZeroShares);
-        rootAccount.setPreference("StockGlance_priceWindow", priceWindowSize);
+        rootAccount.setPreference("StockGlance_displayedSecurities", displayedSecuritiesList);
+        rootAccount.setPreference("StockGlance_DisplayPartialPrices", allowPartialPrices);
+        rootAccount.setPreference("StockGlance_DisplayZeroShares", displayZeroShares);
+        rootAccount.setPreference("StockGlance_TimelyWindow", timelySnapshotInterval);
     }
 
-    private String getDisplayAccounts() { return displayAccounts; }
+    private String getDisplayedSecurities() { return displayedSecuritiesList; }
 
-    private void setDisplayAccounts(String accounts) {
-        displayAccounts = accounts;
+    private void setDisplayedSecurities(String securities) {
+        displayedSecuritiesList = securities;
         savePreferences();
     }
 
-    private boolean getUknownPrices() { return displayUnknownPrices; }
+    private boolean getAllowPartialPrices() { return allowPartialPrices; }
 
-    private void setUnknownPrice(boolean flag) {
-        displayUnknownPrices = flag;
+    private void setAllowPartialPrices(boolean flag) {
+        allowPartialPrices = flag;
         savePreferences();
     }
 
@@ -212,10 +214,10 @@ class StockGlance implements HomePageView {
         savePreferences();
     }
 
-    private int getPriceWindow() { return priceWindowSize; }
+    private int getTimelySnapshotInterval() { return timelySnapshotInterval; }
 
-    private void setPriceWindow(int value) {
-        priceWindowSize = value;
+    private void setTimelySnapshotInterval(int value) {
+        timelySnapshotInterval = value;
         savePreferences();
     }
 
@@ -228,7 +230,7 @@ class StockGlance implements HomePageView {
         transient MoneydanceGUI mdGUI;
         private transient StockGlance thisSG;
         private SGTable footerTable = null;
-        private HashSet accountTable = null;
+        private HashSet selectedSecurities = null;
 
         SGTable(MoneydanceGUI mdGUI, StockGlance thisSG, AccountBook book, boolean isMainTable) {
             super();
@@ -258,11 +260,11 @@ class StockGlance implements HomePageView {
                 this.getColumnModel().addColumnModelListener(footerTable);
                 footerTable.getColumnModel().addColumnModelListener(this);
 
-                recomputeModel(book, getDisplayAccounts(), getUknownPrices(), getZeroShares(), getPriceWindow());
+                recomputeModel(book, getDisplayedSecurities(), getAllowPartialPrices(), getZeroShares(), getTimelySnapshotInterval());
             }
         }
 
-        public void recomputeModel(AccountBook book, String displayAccounts, boolean displayUnknownPrices, boolean displayZeroShares, int priceWindowSize) 
+        public void recomputeModel(AccountBook book, String displayedSecuritiesList, boolean allowPartialPrices, boolean displayZeroShares, int timelySnapshotInterval) 
         {
             CurrencyTable ct = book.getCurrencies();
             java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
@@ -280,14 +282,14 @@ class StockGlance implements HomePageView {
             for (CurrencyType curr : allCurrencies) {
                 if (!curr.getHideInUI()
                     && curr.getCurrencyType() == CurrencyType.Type.SECURITY
-                    && (accountTable != null && accountTable.contains(curr.getUUID()))) {//TODO
-                    Double price = priceOrNaN(curr, today, 0, priceWindowSize);
-                    Double price1 = priceOrNaN(curr, today, 1, priceWindowSize);
-                    Double price7 = priceOrNaN(curr, today, 7, priceWindowSize);
-                    Double price30 = priceOrNaN(curr, today, 30, priceWindowSize);
-                    Double price365 = priceOrNaN(curr, today, 365, priceWindowSize);
+                    && (selectedSecurities != null && selectedSecurities.contains(curr.getName()))) {
+                    Double price = priceOrNaN(curr, today, 0, timelySnapshotInterval);
+                    Double price1 = priceOrNaN(curr, today, 1, timelySnapshotInterval);
+                    Double price7 = priceOrNaN(curr, today, 7, timelySnapshotInterval);
+                    Double price30 = priceOrNaN(curr, today, 30, timelySnapshotInterval);
+                    Double price365 = priceOrNaN(curr, today, 365, timelySnapshotInterval);
     
-                    if (displayUnknownPrices
+                    if (allowPartialPrices
                         || (!Double.isNaN(price)
                             && (!Double.isNaN(price1) || !Double.isNaN(price7) || !Double.isNaN(price30) || !Double.isNaN(price365)))) {
                         Vector<Object> entry = new Vector<>(names.length);
@@ -335,10 +337,10 @@ class StockGlance implements HomePageView {
             footerModel.setDataVector(footerData, columnNames);
         }
 
-        private Double priceOrNaN(CurrencyType curr, Calendar date, int delta, int priceWindowSize) {
+        private Double priceOrNaN(CurrencyType curr, Calendar date, int delta, int timelySnapshotInterval) {
             try {
                 int backDate = backDays(date, delta);
-                if (haveSnapshotWithinWeek(curr, backDate, priceWindowSize)) {
+                if (haveSnapshotWithinWeek(curr, backDate, timelySnapshotInterval)) {
                     double adjRate = curr.adjustRateForSplitsInt(backDate, curr.getRelativeRate(backDate));
                     //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+"): "+curr.getRelativeRate(backDate)+", "+adjRate);
                     return 1.0 / adjRate;
@@ -360,13 +362,13 @@ class StockGlance implements HomePageView {
         // MD function getRelativeRate(int dt) returns last known rate, even if
         // price is far from the desired date DT. Return true if the snapshots
         // contain a rate within a window before the given date.
-        private boolean haveSnapshotWithinWeek(CurrencyType curr, int date, int priceWindowSize) {
+        private boolean haveSnapshotWithinWeek(CurrencyType curr, int date, int timelySnapshotInterval) {
             List<CurrencySnapshot> snapshots = curr.getSnapshots();
-            if (priceWindowSize == INFINITY) {
+            if (timelySnapshotInterval == INFINITY) {
                 return !snapshots.isEmpty();
             }
             for (CurrencySnapshot snap : snapshots) {
-                if (DateUtil.calculateDaysBetween(snap.getDateInt(), date) <= priceWindowSize) {
+                if (DateUtil.calculateDaysBetween(snap.getDateInt(), date) <= timelySnapshotInterval) {
                     return true;
                 }
             }
@@ -397,21 +399,21 @@ class StockGlance implements HomePageView {
             return footerTable;
         }
 
-        private String getDisplayAccounts() { return thisSG.getDisplayAccounts(); }
+        private String getDisplayedSecurities() { return thisSG.getDisplayedSecurities(); }
 
-        private void setDisplayAccounts(String accounts) {
-            thisSG.setDisplayAccounts(accounts);
+        private void setDisplayedSecurities(String securities) {
+            thisSG.setDisplayedSecurities(securities);
             thisSG.refresh();
         }
 
-        private void setAccounts(HashSet accounts) {
-            this.accountTable = accounts;
+        private void setSelectedSecurities(HashSet<String> securities) {
+            this.selectedSecurities = securities;
         }
 
-        private boolean getUknownPrices() { return thisSG.getUknownPrices(); }
+        private boolean getAllowPartialPrices() { return thisSG.getAllowPartialPrices(); }
 
-        private void setUnknownPrice(boolean flag) {
-            thisSG.setUnknownPrice(flag);
+        private void setAllowPartialPrices(boolean flag) {
+            thisSG.setAllowPartialPrices(flag);
             thisSG.refresh();
         }
 
@@ -422,10 +424,10 @@ class StockGlance implements HomePageView {
             thisSG.refresh();
         }
         
-        private int getPriceWindow() { return thisSG.getPriceWindow(); }
+        private int getTimelySnapshotInterval() { return thisSG.getTimelySnapshotInterval(); }
 
-        private void setPriceWindow(int value) {
-            thisSG.setPriceWindow(value);
+        private void setTimelySnapshotInterval(int value) {
+            thisSG.setTimelySnapshotInterval(value);
             thisSG.refresh();
         }
 
@@ -534,7 +536,7 @@ class StockGlance implements HomePageView {
         transient MoneydanceGUI mdGUI;
         private SGTable table;
         private JPanel configPanel;
-        private AccountSelectList accountList;
+        private CheckBoxList securitySelectionList;
         private JFrame frame;
 
         SGPanel(MoneydanceGUI mdGUI, SGTable table) {
@@ -580,15 +582,14 @@ class StockGlance implements HomePageView {
             } else {
                 JPanel cPanel = new JPanel(new GridBagLayout());
                 cPanel.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
-                this.setupAccountSelector();
 
                 cPanel.setForeground(mdGUI.getColors().defaultTextForeground);
                 cPanel.setBackground(mdGUI.getColors().defaultBackground);
 
-                JCheckBox unknownPriceCheckbox = new JCheckBox("Display unknown prices");
-                JCheckBox zeroSharesCheckbox = new JCheckBox("Display zero shares");
+                JCheckBox partialPriceCheckbox = new JCheckBox("Display securities without full price history");
+                JCheckBox zeroSharesCheckbox = new JCheckBox("Display securities with zero shares");
                 JPanel checkboxPanel = new JPanel(new GridLayout(0, 1));
-                checkboxPanel.add(unknownPriceCheckbox);
+                checkboxPanel.add(partialPriceCheckbox);
                 checkboxPanel.add(zeroSharesCheckbox);
 
                 JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
@@ -610,23 +611,22 @@ class StockGlance implements HomePageView {
                 sliderPanel.add(sliderLabel);
                 sliderPanel.add(windowSlider);
 
-                resetUI(unknownPriceCheckbox, zeroSharesCheckbox, windowSlider);
-
                 JPanel buttonPanel = new JPanel(new GridLayout(1, 0));
                 JButton resetButton = new JButton("Reset");
-                resetButton.addActionListener(e -> resetUI(unknownPriceCheckbox, zeroSharesCheckbox, windowSlider));
+                resetButton.addActionListener(e -> resetUI(securitySelectionList, partialPriceCheckbox, zeroSharesCheckbox, windowSlider));
                 JButton cancelButton = new JButton("Cancel");
                 cancelButton.addActionListener(e -> {
-                    resetUI(unknownPriceCheckbox, zeroSharesCheckbox, windowSlider);
+                    resetUI(securitySelectionList, partialPriceCheckbox, zeroSharesCheckbox, windowSlider);
                     this.frame.setVisible(false);
                 });
                 JButton okButton = new JButton("OK");
                 okButton.addActionListener(e -> {
-                    this.table.setDisplayAccounts(GraphReportUtil.encodeAcctList(this.accountList));
-                    this.table.setAccounts((HashSet)this.accountList.getAccountFilter().getAllIncluded());
-                    this.table.setUnknownPrice(unknownPriceCheckbox.isSelected());
+                    HashSet<String> selectedSecurities = this.securitySelectionList.getSelected();
+                    this.table.setDisplayedSecurities(encodeSelectedSecurities(selectedSecurities));
+                    this.table.setSelectedSecurities(selectedSecurities);
+                    this.table.setAllowPartialPrices(partialPriceCheckbox.isSelected());
                     this.table.setZeroShares(zeroSharesCheckbox.isSelected());
-                    this.table.setPriceWindow(label2window(windowSlider.getValue()));
+                    this.table.setTimelySnapshotInterval(label2window(windowSlider.getValue()));
                     this.frame.setVisible(false);
                 });
                 buttonPanel.add(resetButton);
@@ -634,33 +634,58 @@ class StockGlance implements HomePageView {
                 buttonPanel.add(cancelButton);
                 buttonPanel.add(okButton);
 
+                securitySelectionList = makeSecuritySelectionList(this.table.getDisplayedSecurities());
+                JScrollPane listScroller = new JScrollPane(securitySelectionList);
+
+                resetUI(securitySelectionList, partialPriceCheckbox, zeroSharesCheckbox, windowSlider);
+
                 int y = 0;
                 cPanel.add(checkboxPanel, GridC.getc(1, y).field());
                 cPanel.add(sliderPanel, GridC.getc(2, y++).field());
-                cPanel.add(new JLabel("Accounts:"),GridC.getc(0, y++).label());
-                this.accountList.layoutComponentUI();
-                cPanel.add(this.accountList.getView(), GridC.getc(1, y++).colspan(2).field().wxy(1.0F, 1.0F).fillboth());
+                cPanel.add(new JLabel("Securities:"),GridC.getc(0, y++).label());
+                cPanel.add(listScroller, GridC.getc(1, y++).colspan(2).field().wxy(1.0F, 1.0F).fillboth());
                 cPanel.add(buttonPanel, GridC.getc(0, y).west().colspan(3).label());
                 return cPanel;
             }
         }
 
-        private void setupAccountSelector() {
-            AccountFilter accountFilter = new AccountFilter("all_securities");
-            accountFilter.addAllowedType(Account.AccountType.INVESTMENT);
-            accountFilter.addAllowedType(Account.AccountType.SECURITY);
-            FullAccountList fullAccountList = new FullAccountList(book, accountFilter, true);
-            accountFilter.setFullList(fullAccountList);
-            this.accountList = new AccountSelectList(this.mdGUI);
-            this.accountList.setAccountFilter(accountFilter);
-            this.accountList.setAutoSelectChildAccounts(true);
+        private static final String SECURITY_SEPARATOR = ", ";
+
+        private CheckBoxList makeSecuritySelectionList(String displayedSecurities) {
+            Vector<JCheckBox> securities = new Vector<>();
+            for (CurrencyType curr : book.getCurrencies().getAllCurrencies()) {
+                if (!curr.getHideInUI() && curr.getCurrencyType() == CurrencyType.Type.SECURITY) {
+                    String securityName = curr.getName();
+                    JCheckBox checkBox = new JCheckBox(securityName);
+                    if (displayedSecurities.contains(securityName + SECURITY_SEPARATOR)) {
+                        checkBox.setSelected(true);
+                    }
+                    securities.add(checkBox);
+                }
+            }
+            securities.sort((JCheckBox b1, JCheckBox b2) -> b1.getText().compareTo(b2.getText()));
+            return new CheckBoxList(securities);
         }
 
-        private void resetUI(JCheckBox unknownPriceCheckbox, JCheckBox zeroSharesCheckbox, JSlider windowSlider) {
-            GraphReportUtil.selectIndices(this.mdGUI.getCurrentBook(), this.table.getDisplayAccounts(), this.accountList);
-            unknownPriceCheckbox.setSelected(this.table.getUknownPrices());
+        private String encodeSelectedSecurities(HashSet<String> selectedSecurities) {
+            StringBuilder encoding = new StringBuilder("");
+            for (String s : selectedSecurities) {
+                encoding.append(s + SECURITY_SEPARATOR);
+            }
+            return encoding.toString();
+        }
+
+        private HashSet<String> decodeSelectedSecurities(String encodedSecurities) {
+            HashSet<String> selectedSecurities = new HashSet<>();
+            Collections.addAll(selectedSecurities, encodedSecurities.split(SECURITY_SEPARATOR));
+            return selectedSecurities;
+        }
+        
+        private void resetUI(CheckBoxList securitySelectionList, JCheckBox partialPriceCheckbox, JCheckBox zeroSharesCheckbox, JSlider windowSlider) {
+            securitySelectionList.setSelected(decodeSelectedSecurities(this.table.getDisplayedSecurities()));
+            partialPriceCheckbox.setSelected(this.table.getAllowPartialPrices());
             zeroSharesCheckbox.setSelected(this.table.getZeroShares());
-            windowSlider.setValue(this.table.getPriceWindow());
+            windowSlider.setValue(this.table.getTimelySnapshotInterval());
         }
 
         @Override
@@ -698,7 +723,68 @@ class StockGlance implements HomePageView {
         }
     }
 
+    // CheckBoxList
+    class CheckBoxList extends JList<JCheckBox> {
+        protected transient Border noFocusBorder = new EmptyBorder(1, 1, 1, 1);
 
+        public CheckBoxList(Vector<JCheckBox> listData) {
+            // https://stackoverflow.com/questions/19766/how-do-i-make-a-list-with-checkboxes-in-java-swing
+            super(listData);
+            setCellRenderer(new CellRenderer());
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    int index = locationToIndex(e.getPoint());
+                    if (index != -1) {
+                        JCheckBox checkbox = getModel().getElementAt(index);
+                        checkbox.setSelected(!checkbox.isSelected());
+                        repaint();
+                    }
+                }
+            });
+            setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        }
+
+        public HashSet<String> getSelected() {
+            HashSet<String> selectedCheckBoxes = new HashSet<>();
+            ListModel<JCheckBox> model = this.getModel();
+            for (int i = 0; i < model.getSize(); i++) {
+                JCheckBox element = model.getElementAt(i);
+                if (element.isSelected()) {
+                    selectedCheckBoxes.add(element.getText());
+                }
+            }
+            return selectedCheckBoxes;
+        }
+
+        public void setSelected(HashSet<String> selectedEntries) {
+            ListModel<JCheckBox> model = this.getModel();
+            for (int i = 0; i < model.getSize(); i++) {
+                JCheckBox element = model.getElementAt(i);
+                if (selectedEntries.contains(element.getText())) {
+                    element.setSelected(true);
+                }
+            }
+
+        }
+
+        protected class CellRenderer implements ListCellRenderer<JCheckBox> {
+            public Component getListCellRendererComponent(JList<? extends JCheckBox> list, JCheckBox value, int index,
+                    boolean isSelected, boolean cellHasFocus) {
+                JCheckBox checkbox = value;
+
+                // Drawing checkbox, change the appearance here
+                checkbox.setBackground(isSelected ? getSelectionBackground() : getBackground());
+                checkbox.setForeground(isSelected ? getSelectionForeground() : getForeground());
+                checkbox.setEnabled(isEnabled());
+                checkbox.setFont(getFont());
+                checkbox.setFocusPainted(false);
+                checkbox.setBorderPainted(true);
+                checkbox.setBorder(isSelected ? UIManager.getBorder("List.focusCellHighlightBorder") : noFocusBorder);
+                return checkbox;
+            }
+        }
+    }
 
     // CurrencyListener
     private static class CurrencyCallback implements CurrencyListener {
