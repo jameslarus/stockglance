@@ -39,15 +39,11 @@ import com.moneydance.apps.md.view.HomePageView;
 import com.moneydance.awt.CollapsibleRefresher;
 import com.moneydance.apps.md.view.gui.MoneydanceGUI;
 import com.moneydance.apps.md.view.gui.MoneydanceLAF;
-import com.moneydance.apps.md.controller.AccountFilter;
-import com.moneydance.apps.md.controller.FullAccountList;
-import com.moneydance.apps.md.view.resources.MDResourceProvider;
 import com.moneydance.awt.GridC;
 
 import java.text.*;
 import java.util.*;
 import java.util.List;
-import java.util.stream.*;
 
 import java.awt.*;
 import java.awt.Component;
@@ -155,7 +151,7 @@ class StockGlance implements HomePageView {
     private void actuallyRefresh() {
         synchronized (this) {
             if (table != null) {
-                table.recomputeModel(book, displayedSecuritiesList, allowPartialPrices, displayZeroShares, timelySnapshotInterval);
+                table.recomputeModel(book, getDisplayedSecurities(), allowPartialPrices, displayZeroShares, timelySnapshotInterval);
             }
         }
         if (tablePane != null) {
@@ -193,30 +189,50 @@ class StockGlance implements HomePageView {
         rootAccount.setPreference("StockGlance_TimelyWindow", timelySnapshotInterval);
     }
 
-    private String getDisplayedSecurities() { return displayedSecuritiesList; }
+    public Set<String> getDisplayedSecurities() { 
+        return decodeDisplayedSecurities(displayedSecuritiesList);
+    }
 
-    private void setDisplayedSecurities(String securities) {
-        displayedSecuritiesList = securities;
+    public void setDisplayedSecurities(Set<String> securities) {
+        displayedSecuritiesList = encodeDisplayedSecurities(securities);
         savePreferences();
     }
 
-    private boolean getAllowPartialPrices() { return allowPartialPrices; }
+    private static final String SECURITY_SEPARATOR = ", ";
 
-    private void setAllowPartialPrices(boolean flag) {
+    private String encodeDisplayedSecurities(Set<String> displayedSecurities) {
+        StringBuilder encoding = new StringBuilder("");
+        for (String s : displayedSecurities) {
+            encoding.append(s + SECURITY_SEPARATOR);
+        }
+        return encoding.toString();
+    }
+
+    private Set<String> decodeDisplayedSecurities(String encodedSecurities) {
+        Set<String> displayedSecurities = new HashSet<>();
+        Collections.addAll(displayedSecurities, encodedSecurities.split(SECURITY_SEPARATOR));
+        return displayedSecurities;
+    }
+
+    public boolean getAllowPartialPrices() {
+        return allowPartialPrices;
+    }
+
+    public void setAllowPartialPrices(boolean flag) {
         allowPartialPrices = flag;
         savePreferences();
     }
 
-    private boolean getZeroShares() { return displayZeroShares; }
+    public boolean getZeroShares() { return displayZeroShares; }
 
-    private void setZeroShares(boolean flag) {
+    public void setZeroShares(boolean flag) {
         displayZeroShares = flag;
         savePreferences();
     }
 
-    private int getTimelySnapshotInterval() { return timelySnapshotInterval; }
+    public int getTimelySnapshotInterval() { return timelySnapshotInterval; }
 
-    private void setTimelySnapshotInterval(int value) {
+    public void setTimelySnapshotInterval(int value) {
         timelySnapshotInterval = value;
         savePreferences();
     }
@@ -230,7 +246,6 @@ class StockGlance implements HomePageView {
         transient MoneydanceGUI mdGUI;
         private transient StockGlance thisSG;
         private SGTable footerTable = null;
-        private HashSet selectedSecurities = null;
 
         SGTable(MoneydanceGUI mdGUI, StockGlance thisSG, AccountBook book, boolean isMainTable) {
             super();
@@ -264,7 +279,7 @@ class StockGlance implements HomePageView {
             }
         }
 
-        public void recomputeModel(AccountBook book, String displayedSecuritiesList, boolean allowPartialPrices, boolean displayZeroShares, int timelySnapshotInterval) 
+        public void recomputeModel(AccountBook book, Set<String> displayedSecurities, boolean allowPartialPrices, boolean displayZeroShares, int timelySnapshotInterval) 
         {
             CurrencyTable ct = book.getCurrencies();
             java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
@@ -282,7 +297,7 @@ class StockGlance implements HomePageView {
             for (CurrencyType curr : allCurrencies) {
                 if (!curr.getHideInUI()
                     && curr.getCurrencyType() == CurrencyType.Type.SECURITY
-                    && (selectedSecurities != null && selectedSecurities.contains(curr.getName()))) {
+                    && (displayedSecurities != null && displayedSecurities.contains(curr.getName()))) {
                     Double price = priceOrNaN(curr, today, 0, timelySnapshotInterval);
                     Double price1 = priceOrNaN(curr, today, 1, timelySnapshotInterval);
                     Double price7 = priceOrNaN(curr, today, 7, timelySnapshotInterval);
@@ -399,15 +414,13 @@ class StockGlance implements HomePageView {
             return footerTable;
         }
 
-        private String getDisplayedSecurities() { return thisSG.getDisplayedSecurities(); }
-
-        private void setDisplayedSecurities(String securities) {
-            thisSG.setDisplayedSecurities(securities);
-            thisSG.refresh();
+        private Set<String> getDisplayedSecurities() {
+            return thisSG.getDisplayedSecurities();
         }
 
-        private void setSelectedSecurities(HashSet<String> securities) {
-            this.selectedSecurities = securities;
+        private void setDisplayedSecurities(Set<String>  securities) {
+            thisSG.setDisplayedSecurities(securities);
+            thisSG.refresh();
         }
 
         private boolean getAllowPartialPrices() { return thisSG.getAllowPartialPrices(); }
@@ -536,7 +549,6 @@ class StockGlance implements HomePageView {
         transient MoneydanceGUI mdGUI;
         private SGTable table;
         private JPanel configPanel;
-        private CheckBoxList securitySelectionList;
         private JFrame frame;
 
         SGPanel(MoneydanceGUI mdGUI, SGTable table) {
@@ -611,6 +623,11 @@ class StockGlance implements HomePageView {
                 sliderPanel.add(sliderLabel);
                 sliderPanel.add(windowSlider);
 
+                CheckBoxList securitySelectionList = makeSecuritySelectionList(this.table.getDisplayedSecurities());
+                JScrollPane listScroller = new JScrollPane(securitySelectionList);
+
+                resetUI(securitySelectionList, partialPriceCheckbox, zeroSharesCheckbox, windowSlider);
+
                 JPanel buttonPanel = new JPanel(new GridLayout(1, 0));
                 JButton resetButton = new JButton("Reset");
                 resetButton.addActionListener(e -> resetUI(securitySelectionList, partialPriceCheckbox, zeroSharesCheckbox, windowSlider));
@@ -621,9 +638,8 @@ class StockGlance implements HomePageView {
                 });
                 JButton okButton = new JButton("OK");
                 okButton.addActionListener(e -> {
-                    HashSet<String> selectedSecurities = this.securitySelectionList.getSelected();
-                    this.table.setDisplayedSecurities(encodeSelectedSecurities(selectedSecurities));
-                    this.table.setSelectedSecurities(selectedSecurities);
+                    Set<String> selectedSecurities = securitySelectionList.getSelected();
+                    this.table.setDisplayedSecurities(selectedSecurities);
                     this.table.setAllowPartialPrices(partialPriceCheckbox.isSelected());
                     this.table.setZeroShares(zeroSharesCheckbox.isSelected());
                     this.table.setTimelySnapshotInterval(label2window(windowSlider.getValue()));
@@ -633,11 +649,6 @@ class StockGlance implements HomePageView {
                 buttonPanel.add(Box.createHorizontalGlue());
                 buttonPanel.add(cancelButton);
                 buttonPanel.add(okButton);
-
-                securitySelectionList = makeSecuritySelectionList(this.table.getDisplayedSecurities());
-                JScrollPane listScroller = new JScrollPane(securitySelectionList);
-
-                resetUI(securitySelectionList, partialPriceCheckbox, zeroSharesCheckbox, windowSlider);
 
                 int y = 0;
                 cPanel.add(checkboxPanel, GridC.getc(1, y).field());
@@ -649,15 +660,13 @@ class StockGlance implements HomePageView {
             }
         }
 
-        private static final String SECURITY_SEPARATOR = ", ";
-
-        private CheckBoxList makeSecuritySelectionList(String displayedSecurities) {
+        private CheckBoxList makeSecuritySelectionList(Set<String> displayedSecurities) {
             Vector<JCheckBox> securities = new Vector<>();
             for (CurrencyType curr : book.getCurrencies().getAllCurrencies()) {
                 if (!curr.getHideInUI() && curr.getCurrencyType() == CurrencyType.Type.SECURITY) {
                     String securityName = curr.getName();
                     JCheckBox checkBox = new JCheckBox(securityName);
-                    if (displayedSecurities.contains(securityName + SECURITY_SEPARATOR)) {
+                    if (displayedSecurities.contains(securityName)) {
                         checkBox.setSelected(true);
                     }
                     securities.add(checkBox);
@@ -666,23 +675,9 @@ class StockGlance implements HomePageView {
             securities.sort((JCheckBox b1, JCheckBox b2) -> b1.getText().compareTo(b2.getText()));
             return new CheckBoxList(securities);
         }
-
-        private String encodeSelectedSecurities(HashSet<String> selectedSecurities) {
-            StringBuilder encoding = new StringBuilder("");
-            for (String s : selectedSecurities) {
-                encoding.append(s + SECURITY_SEPARATOR);
-            }
-            return encoding.toString();
-        }
-
-        private HashSet<String> decodeSelectedSecurities(String encodedSecurities) {
-            HashSet<String> selectedSecurities = new HashSet<>();
-            Collections.addAll(selectedSecurities, encodedSecurities.split(SECURITY_SEPARATOR));
-            return selectedSecurities;
-        }
         
         private void resetUI(CheckBoxList securitySelectionList, JCheckBox partialPriceCheckbox, JCheckBox zeroSharesCheckbox, JSlider windowSlider) {
-            securitySelectionList.setSelected(decodeSelectedSecurities(this.table.getDisplayedSecurities()));
+            securitySelectionList.setSelected(this.table.getDisplayedSecurities());
             partialPriceCheckbox.setSelected(this.table.getAllowPartialPrices());
             zeroSharesCheckbox.setSelected(this.table.getZeroShares());
             windowSlider.setValue(this.table.getTimelySnapshotInterval());
@@ -745,8 +740,8 @@ class StockGlance implements HomePageView {
             setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         }
 
-        public HashSet<String> getSelected() {
-            HashSet<String> selectedCheckBoxes = new HashSet<>();
+        public Set<String> getSelected() {
+            Set<String> selectedCheckBoxes = new HashSet<>();
             ListModel<JCheckBox> model = this.getModel();
             for (int i = 0; i < model.getSize(); i++) {
                 JCheckBox element = model.getElementAt(i);
@@ -757,7 +752,7 @@ class StockGlance implements HomePageView {
             return selectedCheckBoxes;
         }
 
-        public void setSelected(HashSet<String> selectedEntries) {
+        public void setSelected(Set<String> selectedEntries) {
             ListModel<JCheckBox> model = this.getModel();
             for (int i = 0; i < model.getSize(); i++) {
                 JCheckBox element = model.getElementAt(i);
