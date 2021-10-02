@@ -200,9 +200,9 @@ class StockGlance implements HomePageView {
 
     private static final String SECURITY_SEPARATOR = ", ";
 
-    private String encodeDisplayedSecurities(Set<String> displayedSecurities) {
+    private String encodeDisplayedSecurities(Set<String> securities) {
         StringBuilder encoding = new StringBuilder("");
-        for (String s : displayedSecurities) {
+        for (String s : securities) {
             encoding.append(s + SECURITY_SEPARATOR);
         }
         return encoding.toString();
@@ -298,11 +298,11 @@ class StockGlance implements HomePageView {
                 if (!curr.getHideInUI()
                     && curr.getCurrencyType() == CurrencyType.Type.SECURITY
                     && (displayedSecurities != null && displayedSecurities.contains(curr.getName()))) {
-                    Double price = priceOrNaN(curr, today, 0, timelySnapshotInterval);
-                    Double price1 = priceOrNaN(curr, today, 1, timelySnapshotInterval);
-                    Double price7 = priceOrNaN(curr, today, 7, timelySnapshotInterval);
-                    Double price30 = priceOrNaN(curr, today, 30, timelySnapshotInterval);
-                    Double price365 = priceOrNaN(curr, today, 365, timelySnapshotInterval);
+                    Double price = timelyPriceOrNaN(curr, today, 0, timelySnapshotInterval);
+                    Double price1 = timelyPriceOrNaN(curr, today, 1, timelySnapshotInterval);
+                    Double price7 = timelyPriceOrNaN(curr, today, 7, timelySnapshotInterval);
+                    Double price30 = timelyPriceOrNaN(curr, today, 30, timelySnapshotInterval);
+                    Double price365 = timelyPriceOrNaN(curr, today, 365, timelySnapshotInterval);
     
                     if (allowPartialPrices
                         || (!Double.isNaN(price)
@@ -352,14 +352,15 @@ class StockGlance implements HomePageView {
             footerModel.setDataVector(footerData, columnNames);
         }
 
-        private Double priceOrNaN(CurrencyType curr, Calendar date, int delta, int timelySnapshotInterval) {
+        private Double timelyPriceOrNaN(CurrencyType curr, Calendar date, int delta, int timelySnapshotInterval) {
             try {
                 int backDate = backDays(date, delta);
-                if (haveSnapshotWithinWeek(curr, backDate, timelySnapshotInterval)) {
+                if (haveSnapshotWithinInterval(curr, backDate, timelySnapshotInterval)) {
                     double adjRate = curr.adjustRateForSplitsInt(backDate, curr.getRelativeRate(backDate));
-                    //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+"): "+curr.getRelativeRate(backDate)+", "+adjRate);
+                    //System.err.println(curr.getName()+" ("+backDate+ " d " + timelySnapshotInterval+") ("+curr.getRelativeCurrency().getName()+"): "+1.0/curr.getRelativeRate(backDate)+", "+1.0/adjRate);
                     return 1.0 / adjRate;
                 } else {
+                    //System.err.println(curr.getName()+" ("+backDate+ " d " + timelySnapshotInterval+") No snap");
                     return Double.NaN;
                 }
             } catch (ArrayIndexOutOfBoundsException e) {
@@ -377,13 +378,14 @@ class StockGlance implements HomePageView {
         // MD function getRelativeRate(int dt) returns last known rate, even if
         // price is far from the desired date DT. Return true if the snapshots
         // contain a rate within a window before the given date.
-        private boolean haveSnapshotWithinWeek(CurrencyType curr, int date, int timelySnapshotInterval) {
+        private boolean haveSnapshotWithinInterval(CurrencyType curr, int date, int timelySnapshotInterval) {
             List<CurrencySnapshot> snapshots = curr.getSnapshots();
             if (timelySnapshotInterval == INFINITY) {
                 return !snapshots.isEmpty();
             }
             for (CurrencySnapshot snap : snapshots) {
-                if (DateUtil.calculateDaysBetween(snap.getDateInt(), date) <= timelySnapshotInterval) {
+                int daysBetween = date - snap.getDateInt();  // > 0 => snap before date
+                if (0 <= daysBetween && daysBetween <= timelySnapshotInterval) {
                     return true;
                 }
             }
