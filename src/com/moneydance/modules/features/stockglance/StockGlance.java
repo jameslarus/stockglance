@@ -67,7 +67,7 @@ class StockGlance implements HomePageView {
     private SGPanel tablePane;
 
     private String displayedSecuritiesList;         // Comma-separated list of security to display
-    private boolean allowPartialPrices = false;     // Display even if not all prices are available
+    private boolean allowMissingPrices = false;     // Display even if not all prices are available
     private boolean displayZeroShares = false;      // Display even if no shares are owned
     private int timelySnapshotInterval = 7;         // Days to look back to find security price (-1 => infinity)
 
@@ -151,7 +151,7 @@ class StockGlance implements HomePageView {
     private void actuallyRefresh() {
         synchronized (this) {
             if (table != null) {
-                table.recomputeModel(book, getDisplayedSecurities(), allowPartialPrices, displayZeroShares, timelySnapshotInterval);
+                table.recomputeModel(book, getDisplayedSecurities(), allowMissingPrices, displayZeroShares, timelySnapshotInterval);
             }
         }
         if (tablePane != null) {
@@ -168,15 +168,15 @@ class StockGlance implements HomePageView {
         if (tablePane != null) {
             tablePane.removeAll();
         }
-        tablePane = null;
         table = null;
+        tablePane = null;
     }
 
     // Preference of which stocks are displayed in the table.
     private void getPreferences() {
         Account rootAccount = book.getRootAccount();
         displayedSecuritiesList = rootAccount.getPreference("StockGlance_displayedSecurities", "");
-        allowPartialPrices = rootAccount.getPreferenceBoolean("StockGlance_DisplayPartialPrices", false);
+        allowMissingPrices = rootAccount.getPreferenceBoolean("StockGlance_DisplayMissingPrices", false);
         displayZeroShares = rootAccount.getPreferenceBoolean("StockGlance_DisplayZeroShares", false);
         timelySnapshotInterval = rootAccount.getPreferenceInt("StockGlance_TimelyWindow", 7);
     }
@@ -184,7 +184,7 @@ class StockGlance implements HomePageView {
     private void savePreferences() {
         Account rootAccount = book.getRootAccount();
         rootAccount.setPreference("StockGlance_displayedSecurities", displayedSecuritiesList);
-        rootAccount.setPreference("StockGlance_DisplayPartialPrices", allowPartialPrices);
+        rootAccount.setPreference("StockGlance_DisplayMissingPrices", allowMissingPrices);
         rootAccount.setPreference("StockGlance_DisplayZeroShares", displayZeroShares);
         rootAccount.setPreference("StockGlance_TimelyWindow", timelySnapshotInterval);
     }
@@ -214,12 +214,12 @@ class StockGlance implements HomePageView {
         return displayedSecurities;
     }
 
-    public boolean getAllowPartialPrices() {
-        return allowPartialPrices;
+    public boolean getAllowMissingPrices() {
+        return allowMissingPrices;
     }
 
-    public void setAllowPartialPrices(boolean flag) {
-        allowPartialPrices = flag;
+    public void setAllowMissingPrices(boolean flag) {
+        allowMissingPrices = flag;
         savePreferences();
     }
 
@@ -275,11 +275,11 @@ class StockGlance implements HomePageView {
                 this.getColumnModel().addColumnModelListener(footerTable);
                 footerTable.getColumnModel().addColumnModelListener(this);
 
-                recomputeModel(book, getDisplayedSecurities(), getAllowPartialPrices(), getZeroShares(), getTimelySnapshotInterval());
+                recomputeModel(book, getDisplayedSecurities(), getAllowMissingPrices(), getZeroShares(), getTimelySnapshotInterval());
             }
         }
 
-        public void recomputeModel(AccountBook book, Set<String> displayedSecurities, boolean allowPartialPrices, boolean displayZeroShares, int timelySnapshotInterval) 
+        public void recomputeModel(AccountBook book, Set<String> displayedSecurities, boolean allowMissingPrices, boolean displayZeroShares, int timelySnapshotInterval) 
         {
             CurrencyTable ct = book.getCurrencies();
             java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
@@ -298,13 +298,13 @@ class StockGlance implements HomePageView {
                 if (!curr.getHideInUI()
                     && curr.getCurrencyType() == CurrencyType.Type.SECURITY
                     && (displayedSecurities != null && displayedSecurities.contains(curr.getName()))) {
-                    Double price = timelyPriceOrNaN(curr, today, 0, timelySnapshotInterval);
-                    Double price1 = timelyPriceOrNaN(curr, today, 1, timelySnapshotInterval);
-                    Double price7 = timelyPriceOrNaN(curr, today, 7, timelySnapshotInterval);
-                    Double price30 = timelyPriceOrNaN(curr, today, 30, timelySnapshotInterval);
-                    Double price365 = timelyPriceOrNaN(curr, today, 365, timelySnapshotInterval);
+                    Double price = timelyQuoteOrNaN(curr, today, 0, timelySnapshotInterval);
+                    Double price1 = timelyQuoteOrNaN(curr, today, 1, timelySnapshotInterval);
+                    Double price7 = timelyQuoteOrNaN(curr, today, 7, timelySnapshotInterval);
+                    Double price30 = timelyQuoteOrNaN(curr, today, 30, timelySnapshotInterval);
+                    Double price365 = timelyQuoteOrNaN(curr, today, 365, timelySnapshotInterval);
     
-                    if (allowPartialPrices
+                    if (allowMissingPrices
                         || (!Double.isNaN(price)
                             && (!Double.isNaN(price1) || !Double.isNaN(price7) || !Double.isNaN(price30) || !Double.isNaN(price365)))) {
                         Vector<Object> entry = new Vector<>(names.length);
@@ -352,7 +352,7 @@ class StockGlance implements HomePageView {
             footerModel.setDataVector(footerData, columnNames);
         }
 
-        private Double timelyPriceOrNaN(CurrencyType curr, Calendar date, int delta, int timelySnapshotInterval) {
+        private Double timelyQuoteOrNaN(CurrencyType curr, Calendar date, int delta, int timelySnapshotInterval) {
             try {
                 int backDate = backDays(date, delta);
                 if (haveSnapshotWithinInterval(curr, backDate, timelySnapshotInterval)) {
@@ -376,8 +376,8 @@ class StockGlance implements HomePageView {
         }
 
         // MD function getRelativeRate(int dt) returns last known rate, even if
-        // price is far from the desired date DT. Return true if the snapshots
-        // contain a rate within a window before the given date.
+        // quote is far from the desired date DT. Return true if the snapshots
+        // contain a rate within a window of timelySnapshotInterval before the given date.
         private boolean haveSnapshotWithinInterval(CurrencyType curr, int date, int timelySnapshotInterval) {
             List<CurrencySnapshot> snapshots = curr.getSnapshots();
             if (timelySnapshotInterval == INFINITY) {
@@ -425,10 +425,10 @@ class StockGlance implements HomePageView {
             thisSG.refresh();
         }
 
-        private boolean getAllowPartialPrices() { return thisSG.getAllowPartialPrices(); }
+        private boolean getAllowMissingPrices() { return thisSG.getAllowMissingPrices(); }
 
-        private void setAllowPartialPrices(boolean flag) {
-            thisSG.setAllowPartialPrices(flag);
+        private void setAllowMissingPrices(boolean flag) {
+            thisSG.setAllowMissingPrices(flag);
             thisSG.refresh();
         }
 
@@ -600,14 +600,16 @@ class StockGlance implements HomePageView {
                 cPanel.setForeground(mdGUI.getColors().defaultTextForeground);
                 cPanel.setBackground(mdGUI.getColors().defaultBackground);
 
-                JCheckBox partialPriceCheckbox = new JCheckBox("Display securities without full price history");
+                JCheckBox missingPriceCheckbox = new JCheckBox("Display securities with missing prices");
                 JCheckBox zeroSharesCheckbox = new JCheckBox("Display securities with zero shares");
                 JPanel checkboxPanel = new JPanel(new GridLayout(0, 1));
-                checkboxPanel.add(partialPriceCheckbox);
+                checkboxPanel.setBorder(BorderFactory.createLineBorder(Color.black));
+                checkboxPanel.add(missingPriceCheckbox);
                 checkboxPanel.add(zeroSharesCheckbox);
 
                 JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
-                JLabel sliderLabel = new JLabel("Valid price window", javax.swing.SwingConstants.CENTER);
+                sliderPanel.setBorder(BorderFactory.createLineBorder(Color.black));
+                JLabel sliderLabel = new JLabel("Interval in which price quote is timely", javax.swing.SwingConstants.CENTER);
                 sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
                 JSlider windowSlider = new JSlider(javax.swing.SwingConstants.HORIZONTAL, 1, 40, 7);
                 Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
@@ -628,21 +630,21 @@ class StockGlance implements HomePageView {
                 CheckBoxList securitySelectionList = makeSecuritySelectionList(this.table.getDisplayedSecurities());
                 JScrollPane listScroller = new JScrollPane(securitySelectionList);
 
-                resetUI(securitySelectionList, partialPriceCheckbox, zeroSharesCheckbox, windowSlider);
+                resetUI(securitySelectionList, missingPriceCheckbox, zeroSharesCheckbox, windowSlider);
 
                 JPanel buttonPanel = new JPanel(new GridLayout(1, 0));
                 JButton resetButton = new JButton("Reset");
-                resetButton.addActionListener(e -> resetUI(securitySelectionList, partialPriceCheckbox, zeroSharesCheckbox, windowSlider));
+                resetButton.addActionListener(e -> resetUI(securitySelectionList, missingPriceCheckbox, zeroSharesCheckbox, windowSlider));
                 JButton cancelButton = new JButton("Cancel");
                 cancelButton.addActionListener(e -> {
-                    resetUI(securitySelectionList, partialPriceCheckbox, zeroSharesCheckbox, windowSlider);
+                    resetUI(securitySelectionList, missingPriceCheckbox, zeroSharesCheckbox, windowSlider);
                     this.frame.setVisible(false);
                 });
                 JButton okButton = new JButton("OK");
                 okButton.addActionListener(e -> {
                     Set<String> selectedSecurities = securitySelectionList.getSelected();
                     this.table.setDisplayedSecurities(selectedSecurities);
-                    this.table.setAllowPartialPrices(partialPriceCheckbox.isSelected());
+                    this.table.setAllowMissingPrices(missingPriceCheckbox.isSelected());
                     this.table.setZeroShares(zeroSharesCheckbox.isSelected());
                     this.table.setTimelySnapshotInterval(label2window(windowSlider.getValue()));
                     this.frame.setVisible(false);
@@ -678,9 +680,9 @@ class StockGlance implements HomePageView {
             return new CheckBoxList(securities);
         }
         
-        private void resetUI(CheckBoxList securitySelectionList, JCheckBox partialPriceCheckbox, JCheckBox zeroSharesCheckbox, JSlider windowSlider) {
+        private void resetUI(CheckBoxList securitySelectionList, JCheckBox missingPriceCheckbox, JCheckBox zeroSharesCheckbox, JSlider windowSlider) {
             securitySelectionList.setSelected(this.table.getDisplayedSecurities());
-            partialPriceCheckbox.setSelected(this.table.getAllowPartialPrices());
+            missingPriceCheckbox.setSelected(this.table.getAllowMissingPrices());
             zeroSharesCheckbox.setSelected(this.table.getZeroShares());
             windowSlider.setValue(this.table.getTimelySnapshotInterval());
         }
