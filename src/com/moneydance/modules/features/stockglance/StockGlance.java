@@ -52,6 +52,8 @@ import java.awt.event.*;
 import javax.swing.*;
 import javax.swing.border.*;
 import javax.swing.event.ChangeEvent;
+import javax.swing.RowSorter;
+import javax.swing.RowSorter.SortKey;
 import javax.swing.table.*;
 
 import static javax.swing.SwingConstants.LEFT;
@@ -259,7 +261,6 @@ class StockGlance implements HomePageView {
             // Body table
             SGTableModel tableModel = new SGTableModel(new Vector<>(), columnNames, new Vector<>());
             this.setModel(tableModel);
-            fixColumnHeaders();
             setAutoCreateRowSorter(true);
             getRowSorter().toggleSortOrder(0); // Default: sort by symbol
 
@@ -333,7 +334,6 @@ class StockGlance implements HomePageView {
                 }
             }
             model.setDataVector(data, columnNames);
-            fixColumnHeaders();
 
             SGTableModel footerModel = (SGTableModel)footerTable.getModel();
             Vector<Vector> footerData = footerModel.getDataVector();
@@ -350,6 +350,23 @@ class StockGlance implements HomePageView {
             footerRow.add(null);  
             footerData.add(footerRow);
             footerModel.setDataVector(footerData, columnNames);
+
+            fixColumnAppearance();
+        }
+   
+        private void fixColumnAppearance() {
+            getTableHeader().setDefaultRenderer(new SGTableHeaderRenderer());
+
+            final TableColumnModel cm = getColumnModel();
+            for (int column = 0; column < getColumnCount(); column++) {
+                int width = 15; // Min width
+                for (int row = 0; row < getRowCount(); row++) {
+                    TableCellRenderer renderer = getCellRenderer(row, column);
+                    Component comp = prepareRenderer(renderer, row, column);
+                    width = Math.max(Math.min(comp.getPreferredSize().width + 1, 150) , width);
+                }
+                cm.getColumn(column).setPreferredWidth(width);
+            }
         }
 
         private Double timelyQuoteOrNaN(CurrencyType curr, Calendar date, int delta, int timelySnapshotInterval) {
@@ -401,15 +418,6 @@ class StockGlance implements HomePageView {
                 totals.put(curr, total);
             }
             return totals;
-        }
-    
-        // Changing table data model changes headers, which erases their formatting.
-        private void fixColumnHeaders() {
-            TableColumnModel cm = getColumnModel();
-            for (int i = 0; i < cm.getColumnCount(); i++) {
-                TableColumn col = cm.getColumn(i);
-                col.setHeaderRenderer(new HeaderRenderer(mdGUI));
-            }
         }
 
         private JTable getFooterTable() {
@@ -915,12 +923,64 @@ class StockGlance implements HomePageView {
         }
     }
 
-    private static class HeaderRenderer extends DefaultTableCellRenderer {
-        HeaderRenderer(MoneydanceGUI mdGUI) {
-            super();
+    /**
+     * http://www.camick.com/java/source/DefaultTableHeaderCellRenderer.java
+     * <P>
+     * A default cell renderer for a JTableHeader.
+     * <P>
+     * DefaultTableHeaderCellRenderer attempts to provide identical behavior to the
+     * renderer which the Swing subsystem uses by default, the Sun proprietary class
+     * sun.swing.table.DefaultTableCellHeaderRenderer.
+     * 
+     * @author Darryl
+     */
+    public class SGTableHeaderRenderer extends DefaultTableCellRenderer {
+        public SGTableHeaderRenderer() {
+            setHorizontalAlignment(CENTER);
+            setHorizontalTextPosition(CENTER);
+            setVerticalAlignment(BOTTOM);
             setForeground(mdGUI.getColors().headerFG);
             setBackground(mdGUI.getColors().headerBG);
-            setHorizontalAlignment(CENTER);
+            setOpaque(false);
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus,
+                int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            JTableHeader tableHeader = table.getTableHeader();
+            if (tableHeader != null) {
+                setForeground(tableHeader.getForeground());
+            }
+            setIcon(getIcon(table, column));
+            setBorder(UIManager.getBorder("TableHeader.cellBorder"));
+            return this;
+        }
+
+        protected Icon getIcon(JTable table, int column) {
+            SortKey sortKey = getSortKey(table, column);
+            if (sortKey != null && table.convertColumnIndexToView(sortKey.getColumn()) == column) {
+                switch (sortKey.getSortOrder()) {
+                    case ASCENDING:
+                        return UIManager.getIcon("Table.ascendingSortIcon");
+                    case DESCENDING:
+                        return UIManager.getIcon("Table.descendingSortIcon");
+                }
+            }
+            return null;
+        }
+
+        protected SortKey getSortKey(JTable table, int column) {
+            RowSorter rowSorter = table.getRowSorter();
+            if (rowSorter == null) {
+                return null;
+            }
+
+            List sortedColumns = rowSorter.getSortKeys();
+            if (sortedColumns.size() > 0) {
+                return (SortKey) sortedColumns.get(0);
+            }
+            return null;
         }
     }
 }
