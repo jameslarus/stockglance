@@ -262,7 +262,6 @@ class StockGlance implements HomePageView {
             SGTableModel tableModel = new SGTableModel(new Vector<>(), columnNames, new Vector<>());
             this.setModel(tableModel);
             setAutoCreateRowSorter(true);
-            getRowSorter().toggleSortOrder(0); // Default: sort by symbol
 
             if (isMainTable) {
                 // Footer table
@@ -333,6 +332,8 @@ class StockGlance implements HomePageView {
                     }
                 }
             }
+
+            data.sort((Vector r1, Vector r2) -> r1.get(0).toString().toLowerCase().compareTo(r2.get(0).toString().toLowerCase())); // Sort by symbol
             model.setDataVector(data, columnNames);
 
             SGTableModel footerModel = (SGTableModel)footerTable.getModel();
@@ -934,13 +935,11 @@ class StockGlance implements HomePageView {
      * 
      * @author Darryl
      */
-    public class SGTableHeaderRenderer extends DefaultTableCellRenderer {
+    private class SGTableHeaderRenderer extends DefaultTableCellRenderer {
         public SGTableHeaderRenderer() {
             setHorizontalAlignment(CENTER);
             setHorizontalTextPosition(CENTER);
             setVerticalAlignment(BOTTOM);
-            setForeground(mdGUI.getColors().headerFG);
-            setBackground(mdGUI.getColors().headerBG);
             setOpaque(false);
         }
 
@@ -950,7 +949,8 @@ class StockGlance implements HomePageView {
             super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
             JTableHeader tableHeader = table.getTableHeader();
             if (tableHeader != null) {
-                setForeground(tableHeader.getForeground());
+                setForeground(mdGUI.getColors().headerFG);
+                setBackground(mdGUI.getColors().headerBG);
             }
             setIcon(getIcon(table, column));
             setBorder(UIManager.getBorder("TableHeader.cellBorder"));
@@ -965,6 +965,8 @@ class StockGlance implements HomePageView {
                         return UIManager.getIcon("Table.ascendingSortIcon");
                     case DESCENDING:
                         return UIManager.getIcon("Table.descendingSortIcon");
+                    case UNSORTED:
+                        break;
                 }
             }
             return null;
@@ -972,13 +974,11 @@ class StockGlance implements HomePageView {
 
         protected SortKey getSortKey(JTable table, int column) {
             RowSorter rowSorter = table.getRowSorter();
-            if (rowSorter == null) {
-                return null;
-            }
-
-            List sortedColumns = rowSorter.getSortKeys();
-            if (sortedColumns.size() > 0) {
-                return (SortKey) sortedColumns.get(0);
+            if (rowSorter != null) {
+                List sortedColumns = rowSorter.getSortKeys();
+                if (!sortedColumns.isEmpty()) {
+                    return (SortKey) sortedColumns.get(0);
+                }
             }
             return null;
         }
