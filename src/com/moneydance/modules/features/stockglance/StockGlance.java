@@ -291,7 +291,7 @@ class StockGlance implements HomePageView {
             Vector<Vector> data = model.getDataVector();
             data.clear();
 
-            HashMap<CurrencyType, Long> balances = sumBalancesByCurrency(book);
+            HashMap<CurrencyType, Double> balances = sumBalancesByCurrency(book);
             Double totalBalance = 0.0;
     
             for (CurrencyType curr : allCurrencies) {
@@ -308,8 +308,8 @@ class StockGlance implements HomePageView {
                         || (!Double.isNaN(price)
                             && (!Double.isNaN(price1) || !Double.isNaN(price7) || !Double.isNaN(price30) || !Double.isNaN(price365)))) {
                         Vector<Object> entry = new Vector<>(names.length);
-                        Long shares = balances.get(curr);
-                        Double dShares = (shares == null) ? 0.0 : curr.getDoubleValue(shares) ;
+                        Double shares = balances.get(curr);
+                        Double dShares = (shares == null) ? 0.0 : shares;
     
                         if ((shares == null || shares == 0) && !displayZeroShares) {
                             continue;
@@ -410,12 +410,13 @@ class StockGlance implements HomePageView {
             return false;
         }
 
-        private HashMap<CurrencyType, Long> sumBalancesByCurrency(AccountBook book) {
-            HashMap<CurrencyType, Long> totals = new HashMap<>();
+        public HashMap<CurrencyType, Double> sumBalancesByCurrency(AccountBook book) {
+            HashMap<CurrencyType, Double> totals = new HashMap<>();
             for (Account acct : AccountUtil.allMatchesForSearch(book, AcctFilter.ALL_ACCOUNTS_FILTER)) {
                 CurrencyType curr = acct.getCurrencyType();
-                Long total = totals.get(curr);
-                total = ((total == null) ? 0L : total) + acct.getCurrentBalance();
+                System.err.println(acct.getAccountName()+": "+curr.getName()+" "+acct.getCurrentBalance());
+                Double total = totals.get(curr);
+                total = ((total == null) ? 0.0 : total) + acct.getCurrentBalance() / 10000.0;
                 totals.put(curr, total);
             }
             return totals;
@@ -636,7 +637,7 @@ class StockGlance implements HomePageView {
                 sliderPanel.add(sliderLabel);
                 sliderPanel.add(windowSlider);
 
-                CheckBoxList securitySelectionList = makeSecuritySelectionList(this.table.getDisplayedSecurities());
+                SecuritySelection securitySelectionList = new SecuritySelection(securitesList(this.table.getDisplayedSecurities()));
                 JScrollPane listScroller = new JScrollPane(securitySelectionList);
 
                 resetUI(securitySelectionList, missingPriceCheckbox, zeroSharesCheckbox, windowSlider);
@@ -673,23 +674,22 @@ class StockGlance implements HomePageView {
             }
         }
 
-        private CheckBoxList makeSecuritySelectionList(Set<String> displayedSecurities) {
-            Vector<JCheckBox> securities = new Vector<>();
+        private Vector<SecurityListEntry> securitesList(Set<String> displayedSecurities) {
+            HashMap<CurrencyType, Double> balances = table.sumBalancesByCurrency(book);
+            Vector<SecurityListEntry> securities = new Vector<>();
             for (CurrencyType curr : book.getCurrencies().getAllCurrencies()) {
                 if (!curr.getHideInUI() && curr.getCurrencyType() == CurrencyType.Type.SECURITY) {
-                    String securityName = curr.getName();
-                    JCheckBox checkBox = new JCheckBox(securityName);
-                    if (displayedSecurities.contains(securityName)) {
-                        checkBox.setSelected(true);
-                    }
-                    securities.add(checkBox);
+                    String name = curr.getName();
+                    Boolean isDisplayed = displayedSecurities.contains(name);
+                    Double numShares = balances.get(curr);
+                    securities.add(new SecurityListEntry(name, isDisplayed, numShares));
                 }
             }
-            securities.sort((JCheckBox b1, JCheckBox b2) -> b1.getText().compareTo(b2.getText()));
-            return new CheckBoxList(securities);
+            securities.sort((SecurityListEntry v1, SecurityListEntry v2) -> v1.name.compareTo(v2.name));
+            return securities;
         }
         
-        private void resetUI(CheckBoxList securitySelectionList, JCheckBox missingPriceCheckbox, JCheckBox zeroSharesCheckbox, JSlider windowSlider) {
+        private void resetUI(SecuritySelection securitySelectionList, JCheckBox missingPriceCheckbox, JCheckBox zeroSharesCheckbox, JSlider windowSlider) {
             securitySelectionList.setSelected(this.table.getDisplayedSecurities());
             missingPriceCheckbox.setSelected(this.table.getAllowMissingPrices());
             zeroSharesCheckbox.setSelected(this.table.getZeroShares());
@@ -731,67 +731,102 @@ class StockGlance implements HomePageView {
         }
     }
 
-    // CheckBoxList
-    class CheckBoxList extends JList<JCheckBox> {
-        protected transient Border noFocusBorder = new EmptyBorder(1, 1, 1, 1);
+    class SecurityListEntry {             // Security displayed in a SecuritySelection
+        public String name;
+        public Boolean isDisplayed;
+        public Double numShares;
+        public SecurityListEntry(String name, Boolean isDispalyed, Double numShares) {
+            this.name = name; this.isDisplayed = isDispalyed; this.numShares = numShares;
+        }
+    }
 
-        public CheckBoxList(Vector<JCheckBox> listData) {
-            // https://stackoverflow.com/questions/19766/how-do-i-make-a-list-with-checkboxes-in-java-swing
-            super(listData);
-            setCellRenderer(new CellRenderer());
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mousePressed(MouseEvent e) {
-                    int index = locationToIndex(e.getPoint());
-                    if (index != -1) {
-                        JCheckBox checkbox = getModel().getElementAt(index);
-                        checkbox.setSelected(!checkbox.isSelected());
-                        repaint();
-                    }
-                }
-            });
-            setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+    class SecuritySelection extends JTable {
+        public SecuritySelection(Vector<SecurityListEntry> securityList) {
+            super();
+            SecuritySelectTableModel model = new SecuritySelectTableModel();
+            setModel(model);
+            String colNames[] = {"display", "security", "shares"};
+            Vector<Vector> data = new Vector();
+            for (SecurityListEntry sec: securityList) {
+                Vector entry = new Vector();
+                entry.add(sec.isDisplayed); entry.add(sec.name); entry.add(sec.numShares);
+                data.add(entry);
+            }
+            model.setDataVector(data, new Vector<>(Arrays.asList(colNames)));
+            TableCellRenderer rendererFromHeader = getTableHeader().getDefaultRenderer();
+            ((JLabel) rendererFromHeader).setHorizontalAlignment(SwingConstants.CENTER);
+            TableColumnModel colModel = getColumnModel();
+            //colModel.getColumn(0).setPreferredWidth(1); 
+            colModel.getColumn(0).setMaxWidth(100);
+            colModel.getColumn(1).setPreferredWidth(400);
+            colModel.getColumn(2).setPreferredWidth(100);
+            colModel.getColumn(2).setCellRenderer(new SecuritySharesTableCellRenderer());
         }
 
         public Set<String> getSelected() {
-            Set<String> selectedCheckBoxes = new HashSet<>();
-            ListModel<JCheckBox> model = this.getModel();
-            for (int i = 0; i < model.getSize(); i++) {
-                JCheckBox element = model.getElementAt(i);
-                if (element.isSelected()) {
-                    selectedCheckBoxes.add(element.getText());
+            Set<String> selectedSecurities = new HashSet<>();
+            DefaultTableModel model = (DefaultTableModel)getModel();
+            for (int row = 0; row < model.getRowCount(); row++) {
+                if ((boolean)model.getValueAt(row, 0)) {
+                    String name = (String)model.getValueAt(row, 1);
+                    selectedSecurities.add(name);
                 }
             }
-            return selectedCheckBoxes;
+            return selectedSecurities;
         }
 
-        public void setSelected(Set<String> selectedEntries) {
-            ListModel<JCheckBox> model = this.getModel();
-            for (int i = 0; i < model.getSize(); i++) {
-                JCheckBox element = model.getElementAt(i);
-                if (selectedEntries.contains(element.getText())) {
-                    element.setSelected(true);
+        public void setSelected(Set<String> selectedSecurities) {
+            DefaultTableModel model = (DefaultTableModel)getModel();
+            for (int row = 0; row < model.getRowCount(); row++) {
+                if (selectedSecurities.contains(model.getValueAt(row, 1))) {
+                    model.setValueAt(true, row, 0);
                 }
             }
+        }
+    }
 
+    class SecuritySelectTableModel extends DefaultTableModel {
+        public SecuritySelectTableModel() {
+            super();
         }
 
-        protected class CellRenderer implements ListCellRenderer<JCheckBox> {
-            public Component getListCellRendererComponent(JList<? extends JCheckBox> list, JCheckBox value, int index,
-                    boolean isSelected, boolean cellHasFocus) {
-                JCheckBox checkbox = value;
+        @Override
+        public Class getColumnClass(int c) {
+            return getValueAt(0, c).getClass();
+        }
+    
+        @Override
+        public boolean isCellEditable(int row, int col) {
+            return col < 2; // Only selection checkbox is editable
+        }
+    }
 
-                // Drawing checkbox, change the appearance here
-                checkbox.setBackground(isSelected ? getSelectionBackground() : getBackground());
-                checkbox.setForeground(isSelected ? getSelectionForeground() : getForeground());
-                checkbox.setEnabled(isEnabled());
-                checkbox.setFont(getFont());
-                checkbox.setFocusPainted(false);
-                checkbox.setBorderPainted(true);
-                checkbox.setBorder(isSelected ? UIManager.getBorder("List.focusCellHighlightBorder") : noFocusBorder);
-                return checkbox;
+    public class SecuritySharesTableCellRenderer extends DefaultTableCellRenderer {
+        private NumberFormat numberFormat;
+
+        public NumberFormat getNumberFormat() {
+            if (numberFormat == null) {
+                numberFormat = NumberFormat.getNumberInstance();
+                numberFormat.setMinimumFractionDigits(0);
+                numberFormat.setMaximumFractionDigits(4);
+                numberFormat.setGroupingUsed(false);
+                ((DecimalFormat) numberFormat).setDecimalSeparatorAlwaysShown(false);
             }
+            return numberFormat;
         }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            if (value instanceof Double) {
+                value = getNumberFormat().format(value);
+            } 
+
+            if (column == 2) {
+                setHorizontalAlignment(RIGHT);
+            }
+            return super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+        }
+
     }
 
     // CurrencyListener
@@ -937,9 +972,8 @@ class StockGlance implements HomePageView {
      */
     private class SGTableHeaderRenderer extends DefaultTableCellRenderer {
         public SGTableHeaderRenderer() {
-            setHorizontalAlignment(CENTER);
-            setHorizontalTextPosition(CENTER);
-            setVerticalAlignment(BOTTOM);
+            setHorizontalAlignment(SwingConstants.CENTER);
+            setVerticalAlignment(SwingConstants.BOTTOM);
             setOpaque(false);
         }
 
