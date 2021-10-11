@@ -414,7 +414,6 @@ class StockGlance implements HomePageView {
             HashMap<CurrencyType, Double> totals = new HashMap<>();
             for (Account acct : AccountUtil.allMatchesForSearch(book, AcctFilter.ALL_ACCOUNTS_FILTER)) {
                 CurrencyType curr = acct.getCurrencyType();
-                System.err.println(acct.getAccountName()+": "+curr.getName()+" "+acct.getCurrentBalance());
                 Double total = totals.get(curr);
                 total = ((total == null) ? 0.0 : total) + acct.getCurrentBalance() / 10000.0;
                 totals.put(curr, total);
