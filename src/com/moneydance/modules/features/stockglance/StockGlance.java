@@ -47,17 +47,19 @@ import java.util.List;
 
 import java.awt.*;
 import java.awt.Component;
-import java.awt.event.*;
 
 import javax.swing.*;
-import javax.swing.border.*;
 import javax.swing.event.ChangeEvent;
 import javax.swing.RowSorter;
 import javax.swing.RowSorter.SortKey;
 import javax.swing.table.*;
 
 import static javax.swing.SwingConstants.LEFT;
+import static javax.swing.SwingConstants.CENTER;
 import static javax.swing.SwingConstants.RIGHT;
+import static javax.swing.SwingConstants.BOTTOM;
+import static javax.swing.SwingConstants.HORIZONTAL;
+
 
 
 // Home page component to display active stock prices and returns.
@@ -291,7 +293,7 @@ class StockGlance implements HomePageView {
             Vector<Vector> data = model.getDataVector();
             data.clear();
 
-            HashMap<CurrencyType, Double> balances = sumBalancesByCurrency(book);
+            Map<CurrencyType, Double> balances = sumBalancesByCurrency(book);
             Double totalBalance = 0.0;
     
             for (CurrencyType curr : allCurrencies) {
@@ -385,7 +387,7 @@ class StockGlance implements HomePageView {
             return DateUtil.convertCalToInt(newDate);
         }
 
-        public HashMap<CurrencyType, Double> sumBalancesByCurrency(AccountBook book) {
+        public Map<CurrencyType, Double> sumBalancesByCurrency(AccountBook book) {
             HashMap<CurrencyType, Double> totals = new HashMap<>();
             for (Account acct : AccountUtil.allMatchesForSearch(book, AcctFilter.ALL_ACCOUNTS_FILTER)) {
                 CurrencyType curr = acct.getCurrencyType();
@@ -593,9 +595,9 @@ class StockGlance implements HomePageView {
 
                 JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
                 sliderPanel.setBorder(BorderFactory.createLineBorder(Color.black));
-                JLabel sliderLabel = new JLabel("Interval in which price quote is timely", javax.swing.SwingConstants.CENTER);
+                JLabel sliderLabel = new JLabel("Interval in which price quote is timely", CENTER);
                 sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-                JSlider windowSlider = new JSlider(javax.swing.SwingConstants.HORIZONTAL, 1, 40, 7);
+                JSlider windowSlider = new JSlider(HORIZONTAL, 1, 40, 7);
                 Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
                 labelTable.put(slider_labels[0], new JLabel("day"));
                 labelTable.put(slider_labels[1], new JLabel("week"));
@@ -649,7 +651,7 @@ class StockGlance implements HomePageView {
         }
 
         private Vector<SecurityListEntry> securitesList(Set<String> displayedSecurities) {
-            HashMap<CurrencyType, Double> balances = table.sumBalancesByCurrency(book);
+            Map<CurrencyType, Double> balances = table.sumBalancesByCurrency(book);
             Vector<SecurityListEntry> securities = new Vector<>();
             for (CurrencyType curr : book.getCurrencies().getAllCurrencies()) {
                 if (!curr.getHideInUI() && curr.getCurrencyType() == CurrencyType.Type.SECURITY) {
@@ -719,7 +721,7 @@ class StockGlance implements HomePageView {
             super();
             SecuritySelectTableModel model = new SecuritySelectTableModel();
             setModel(model);
-            String colNames[] = {"display", "security", "shares"};
+            String[] colNames = {"display", "security", "shares"};
             Vector<Vector> data = new Vector();
             for (SecurityListEntry sec: securityList) {
                 Vector entry = new Vector();
@@ -728,7 +730,7 @@ class StockGlance implements HomePageView {
             }
             model.setDataVector(data, new Vector<>(Arrays.asList(colNames)));
             TableCellRenderer rendererFromHeader = getTableHeader().getDefaultRenderer();
-            ((JLabel) rendererFromHeader).setHorizontalAlignment(SwingConstants.CENTER);
+            ((JLabel) rendererFromHeader).setHorizontalAlignment(CENTER);
             TableColumnModel colModel = getColumnModel();
             //colModel.getColumn(0).setPreferredWidth(1); 
             colModel.getColumn(0).setMaxWidth(100);
@@ -946,8 +948,8 @@ class StockGlance implements HomePageView {
      */
     private class SGTableHeaderRenderer extends DefaultTableCellRenderer {
         public SGTableHeaderRenderer() {
-            setHorizontalAlignment(SwingConstants.CENTER);
-            setVerticalAlignment(SwingConstants.BOTTOM);
+            setHorizontalAlignment(CENTER);
+            setVerticalAlignment(BOTTOM);
             setOpaque(false);
         }
 
