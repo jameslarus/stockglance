@@ -298,11 +298,11 @@ class StockGlance implements HomePageView {
                 if (!curr.getHideInUI()
                     && curr.getCurrencyType() == CurrencyType.Type.SECURITY
                     && (displayedSecurities != null && displayedSecurities.contains(curr.getName()))) {
-                    Double price = timelyQuoteOrNaN(curr, today, 0, timelySnapshotInterval);
-                    Double price1 = timelyQuoteOrNaN(curr, today, 1, timelySnapshotInterval);
-                    Double price7 = timelyQuoteOrNaN(curr, today, 7, timelySnapshotInterval);
-                    Double price30 = timelyQuoteOrNaN(curr, today, 30, timelySnapshotInterval);
-                    Double price365 = timelyQuoteOrNaN(curr, today, 365, timelySnapshotInterval);
+                    Double price =    getAdjRelativeRate(curr, backDays(today, 0), timelySnapshotInterval);
+                    Double price1 =   getAdjRelativeRate(curr, backDays(today, 1), timelySnapshotInterval);
+                    Double price7 =   getAdjRelativeRate(curr, backDays(today, 7), timelySnapshotInterval);
+                    Double price30 =  getAdjRelativeRate(curr, backDays(today, 30), timelySnapshotInterval);
+                    Double price365 = getAdjRelativeRate(curr, backDays(today, 365), timelySnapshotInterval);
     
                     if (allowMissingPrices
                         || (!Double.isNaN(price)
@@ -370,44 +370,19 @@ class StockGlance implements HomePageView {
             }
         }
 
-        private Double timelyQuoteOrNaN(CurrencyType curr, Calendar date, int delta, int timelySnapshotInterval) {
-            try {
-                int backDate = backDays(date, delta);
-                if (haveSnapshotWithinInterval(curr, backDate, timelySnapshotInterval)) {
-                    double adjRate = curr.adjustRateForSplitsInt(backDate, curr.getRelativeRate(backDate));
-                    //System.err.println(curr.getName()+" ("+backDate+ " d " + timelySnapshotInterval+") ("+curr.getRelativeCurrency().getName()+"): "+1.0/curr.getRelativeRate(backDate)+", "+1.0/adjRate);
-                    return 1.0 / adjRate;
-                } else {
-                    //System.err.println(curr.getName()+" ("+backDate+ " d " + timelySnapshotInterval+") No snap");
-                    return Double.NaN;
-                }
-            } catch (ArrayIndexOutOfBoundsException e) {
-                return Double.NaN;
+        private Double getAdjRelativeRate(CurrencyType curr, int asOfDate, int interval) {
+            CurrencySnapshot snap = curr.getSnapshotForDate(asOfDate);
+            if (Math.abs(snap.getDateInt() - asOfDate) <= interval) {
+                return 1.0 / curr.adjustRateForSplitsInt(asOfDate, snap.getRate());
             }
-        }
+            return Double.NaN;
+         }
 
         // Return the date that is delta days before startDate
         private int backDays(Calendar startDate, int delta) {
             Calendar newDate = (Calendar) startDate.clone();
             newDate.add(Calendar.DAY_OF_MONTH, -delta);
             return DateUtil.convertCalToInt(newDate);
-        }
-
-        // MD function getRelativeRate(int dt) returns last known rate, even if
-        // quote is far from the desired date DT. Return true if the snapshots
-        // contain a rate within a window of timelySnapshotInterval before the given date.
-        private boolean haveSnapshotWithinInterval(CurrencyType curr, int date, int timelySnapshotInterval) {
-            List<CurrencySnapshot> snapshots = curr.getSnapshots();
-            if (timelySnapshotInterval == INFINITY) {
-                return !snapshots.isEmpty();
-            }
-            for (CurrencySnapshot snap : snapshots) {
-                int daysBetween = date - snap.getDateInt();  // > 0 => snap before date
-                if (0 <= daysBetween && daysBetween <= timelySnapshotInterval) {
-                    return true;
-                }
-            }
-            return false;
         }
 
         public HashMap<CurrencyType, Double> sumBalancesByCurrency(AccountBook book) {
