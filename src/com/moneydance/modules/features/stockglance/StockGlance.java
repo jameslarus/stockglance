@@ -72,7 +72,6 @@ class StockGlance implements HomePageView {
 
     private String displayedSecuritiesList;         // Comma-separated list of security to display
     private boolean allowMissingPrices = false;     // Display even if not all prices are available
-    private boolean displayZeroShares = false;      // Display even if no shares are owned
     private int timelySnapshotInterval = 7;         // Days to look back to find security price (-1 => infinity)
 
     private final CurrencyCallback currencyTableCallback = new CurrencyCallback(this);
@@ -155,7 +154,7 @@ class StockGlance implements HomePageView {
     private void actuallyRefresh() {
         synchronized (this) {
             if (table != null) {
-                table.recomputeModel(book, getDisplayedSecurities(), allowMissingPrices, displayZeroShares, timelySnapshotInterval);
+                table.recomputeModel(book, getDisplayedSecurities(), allowMissingPrices, timelySnapshotInterval);
             }
         }
         if (tablePane != null) {
@@ -181,7 +180,6 @@ class StockGlance implements HomePageView {
         Account rootAccount = book.getRootAccount();
         displayedSecuritiesList = rootAccount.getPreference("StockGlance_displayedSecurities", "");
         allowMissingPrices = rootAccount.getPreferenceBoolean("StockGlance_DisplayMissingPrices", false);
-        displayZeroShares = rootAccount.getPreferenceBoolean("StockGlance_DisplayZeroShares", false);
         timelySnapshotInterval = rootAccount.getPreferenceInt("StockGlance_TimelyWindow", 7);
     }
 
@@ -189,7 +187,6 @@ class StockGlance implements HomePageView {
         Account rootAccount = book.getRootAccount();
         rootAccount.setPreference("StockGlance_displayedSecurities", displayedSecuritiesList);
         rootAccount.setPreference("StockGlance_DisplayMissingPrices", allowMissingPrices);
-        rootAccount.setPreference("StockGlance_DisplayZeroShares", displayZeroShares);
         rootAccount.setPreference("StockGlance_TimelyWindow", timelySnapshotInterval);
     }
 
@@ -224,13 +221,6 @@ class StockGlance implements HomePageView {
 
     public void setAllowMissingPrices(boolean flag) {
         allowMissingPrices = flag;
-        savePreferences();
-    }
-
-    public boolean getZeroShares() { return displayZeroShares; }
-
-    public void setZeroShares(boolean flag) {
-        displayZeroShares = flag;
         savePreferences();
     }
 
@@ -277,11 +267,11 @@ class StockGlance implements HomePageView {
                 this.getColumnModel().addColumnModelListener(footerTable);
                 footerTable.getColumnModel().addColumnModelListener(this);
 
-                recomputeModel(book, getDisplayedSecurities(), getAllowMissingPrices(), getZeroShares(), getTimelySnapshotInterval());
+                recomputeModel(book, getDisplayedSecurities(), getAllowMissingPrices(), getTimelySnapshotInterval());
             }
         }
 
-        public void recomputeModel(AccountBook book, Set<String> displayedSecurities, boolean allowMissingPrices, boolean displayZeroShares, int timelySnapshotInterval) 
+        public void recomputeModel(AccountBook book, Set<String> displayedSecurities, boolean allowMissingPrices, int timelySnapshotInterval) 
         {
             CurrencyTable ct = book.getCurrencies();
             java.util.List<CurrencyType> allCurrencies = ct.getAllCurrencies();
@@ -313,9 +303,6 @@ class StockGlance implements HomePageView {
                         Double shares = balances.get(curr);
                         Double dShares = (shares == null) ? 0.0 : shares;
     
-                        if ((shares == null || shares == 0) && !displayZeroShares) {
-                            continue;
-                        }
                         totalBalance += dShares * 1.0 / curr.getBaseRate();
                         //System.err.println(curr.getName()+" ("+curr.getRelativeCurrency().getName()+") bal="+dShares+", baseRate="+1.0/curr.getBaseRate());
     
@@ -418,13 +405,6 @@ class StockGlance implements HomePageView {
             thisSG.refresh();
         }
 
-        private boolean getZeroShares() { return thisSG.getZeroShares(); }
-
-        private void setZeroShares(boolean flag) {
-            thisSG.setZeroShares(flag);
-            thisSG.refresh();
-        }
-        
         private int getTimelySnapshotInterval() { return thisSG.getTimelySnapshotInterval(); }
 
         private void setTimelySnapshotInterval(int value) {
@@ -587,11 +567,9 @@ class StockGlance implements HomePageView {
                 cPanel.setBackground(mdGUI.getColors().defaultBackground);
 
                 JCheckBox missingPriceCheckbox = new JCheckBox("Display securities with missing prices");
-                JCheckBox zeroSharesCheckbox = new JCheckBox("Display securities with zero shares");
                 JPanel checkboxPanel = new JPanel(new GridLayout(0, 1));
                 checkboxPanel.setBorder(BorderFactory.createLineBorder(Color.black));
                 checkboxPanel.add(missingPriceCheckbox);
-                checkboxPanel.add(zeroSharesCheckbox);
 
                 JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
                 sliderPanel.setBorder(BorderFactory.createLineBorder(Color.black));
@@ -616,14 +594,14 @@ class StockGlance implements HomePageView {
                 SecuritySelection securitySelectionList = new SecuritySelection(securitesList(this.table.getDisplayedSecurities()));
                 JScrollPane listScroller = new JScrollPane(securitySelectionList);
 
-                resetUI(securitySelectionList, missingPriceCheckbox, zeroSharesCheckbox, windowSlider);
+                resetUI(securitySelectionList, missingPriceCheckbox, windowSlider);
 
                 JPanel buttonPanel = new JPanel(new GridLayout(1, 0));
                 JButton resetButton = new JButton("Reset");
-                resetButton.addActionListener(e -> resetUI(securitySelectionList, missingPriceCheckbox, zeroSharesCheckbox, windowSlider));
+                resetButton.addActionListener(e -> resetUI(securitySelectionList, missingPriceCheckbox, windowSlider));
                 JButton cancelButton = new JButton("Cancel");
                 cancelButton.addActionListener(e -> {
-                    resetUI(securitySelectionList, missingPriceCheckbox, zeroSharesCheckbox, windowSlider);
+                    resetUI(securitySelectionList, missingPriceCheckbox, windowSlider);
                     this.frame.setVisible(false);
                 });
                 JButton okButton = new JButton("OK");
@@ -631,7 +609,6 @@ class StockGlance implements HomePageView {
                     Set<String> selectedSecurities = securitySelectionList.getSelected();
                     this.table.setDisplayedSecurities(selectedSecurities);
                     this.table.setAllowMissingPrices(missingPriceCheckbox.isSelected());
-                    this.table.setZeroShares(zeroSharesCheckbox.isSelected());
                     this.table.setTimelySnapshotInterval(label2window(windowSlider.getValue()));
                     this.frame.setVisible(false);
                 });
@@ -665,10 +642,9 @@ class StockGlance implements HomePageView {
             return securities;
         }
         
-        private void resetUI(SecuritySelection securitySelectionList, JCheckBox missingPriceCheckbox, JCheckBox zeroSharesCheckbox, JSlider windowSlider) {
+        private void resetUI(SecuritySelection securitySelectionList, JCheckBox missingPriceCheckbox, JSlider windowSlider) {
             securitySelectionList.setSelected(this.table.getDisplayedSecurities());
             missingPriceCheckbox.setSelected(this.table.getAllowMissingPrices());
-            zeroSharesCheckbox.setSelected(this.table.getZeroShares());
             windowSlider.setValue(this.table.getTimelySnapshotInterval());
         }
 
