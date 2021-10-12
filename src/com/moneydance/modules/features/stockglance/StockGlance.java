@@ -567,13 +567,12 @@ class StockGlance implements HomePageView {
                 cPanel.setBackground(mdGUI.getColors().defaultBackground);
 
                 JCheckBox missingPriceCheckbox = new JCheckBox("Display securities with missing prices");
+                missingPriceCheckbox.setHorizontalAlignment(CENTER);
                 JPanel checkboxPanel = new JPanel(new GridLayout(0, 1));
-                checkboxPanel.setBorder(BorderFactory.createLineBorder(Color.black));
                 checkboxPanel.add(missingPriceCheckbox);
 
                 JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
-                sliderPanel.setBorder(BorderFactory.createLineBorder(Color.black));
-                JLabel sliderLabel = new JLabel("Interval in which price quote is timely", CENTER);
+                JLabel sliderLabel = new JLabel("Interval in which a security price quote is usable", CENTER);
                 sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
                 JSlider windowSlider = new JSlider(HORIZONTAL, 1, 40, 7);
                 Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
@@ -618,11 +617,12 @@ class StockGlance implements HomePageView {
                 buttonPanel.add(okButton);
 
                 int y = 0;
-                cPanel.add(checkboxPanel, GridC.getc(1, y).field());
-                cPanel.add(sliderPanel, GridC.getc(2, y++).field());
-                cPanel.add(new JLabel("Securities:"),GridC.getc(0, y++).label());
+                cPanel.add(sliderPanel, GridC.getc(1, y++).field());
+                cPanel.add(checkboxPanel, GridC.getc(1, y++).field());
+                cPanel.add(Box.createVerticalStrut(40), GridC.getc(1, y++).field());
                 cPanel.add(listScroller, GridC.getc(1, y++).colspan(2).field().wxy(1.0F, 1.0F).fillboth());
-                cPanel.add(buttonPanel, GridC.getc(0, y).west().colspan(3).label());
+                cPanel.add(Box.createVerticalStrut(40), GridC.getc(1, y++).field());
+                cPanel.add(buttonPanel, GridC.getc(0, y).west().colspan(2).label());
                 return cPanel;
             }
         }
