@@ -57,7 +57,6 @@ import javax.swing.table.*;
 import static javax.swing.SwingConstants.LEFT;
 import static javax.swing.SwingConstants.CENTER;
 import static javax.swing.SwingConstants.RIGHT;
-import static javax.swing.SwingConstants.BOTTOM;
 import static javax.swing.SwingConstants.HORIZONTAL;
 
 
@@ -560,17 +559,6 @@ class StockGlance implements HomePageView {
             if (this.configPanel != null) {
                 return this.configPanel;
             } else {
-                JPanel cPanel = new JPanel(new GridBagLayout());
-                cPanel.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
-
-                cPanel.setForeground(mdGUI.getColors().defaultTextForeground);
-                cPanel.setBackground(mdGUI.getColors().defaultBackground);
-
-                JCheckBox missingPriceCheckbox = new JCheckBox("Display securities with missing prices");
-                missingPriceCheckbox.setHorizontalAlignment(CENTER);
-                JPanel checkboxPanel = new JPanel(new GridLayout(0, 1));
-                checkboxPanel.add(missingPriceCheckbox);
-
                 JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
                 JLabel sliderLabel = new JLabel("Interval in which a security price quote is usable", CENTER);
                 sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -589,6 +577,11 @@ class StockGlance implements HomePageView {
                 windowSlider.setPreferredSize(new Dimension((d.width * 2) / 1, d.height));
                 sliderPanel.add(sliderLabel);
                 sliderPanel.add(windowSlider);
+
+                JCheckBox missingPriceCheckbox = new JCheckBox("Display securities with missing prices");
+                missingPriceCheckbox.setHorizontalAlignment(CENTER);
+                JPanel checkboxPanel = new JPanel(new GridLayout(0, 1));
+                checkboxPanel.add(missingPriceCheckbox);
 
                 SecuritySelection securitySelectionList = new SecuritySelection(securitesList(this.table.getDisplayedSecurities()));
                 JScrollPane listScroller = new JScrollPane(securitySelectionList);
@@ -616,11 +609,17 @@ class StockGlance implements HomePageView {
                 buttonPanel.add(cancelButton);
                 buttonPanel.add(okButton);
 
+                JPanel cPanel = new JPanel(new GridBagLayout());
+                cPanel.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+                cPanel.setForeground(mdGUI.getColors().defaultTextForeground);
+                cPanel.setBackground(mdGUI.getColors().defaultBackground);
                 int y = 0;
                 cPanel.add(sliderPanel, GridC.getc(1, y++).field());
                 cPanel.add(checkboxPanel, GridC.getc(1, y++).field());
                 cPanel.add(Box.createVerticalStrut(40), GridC.getc(1, y++).field());
-                cPanel.add(listScroller, GridC.getc(1, y++).colspan(2).field().wxy(1.0F, 1.0F).fillboth());
+                cPanel.add(Box.createHorizontalStrut(40), GridC.getc(0, y).field());
+                cPanel.add(listScroller, GridC.getc(1, y).field().wxy(1.0F, 1.0F).fillboth());
+                cPanel.add(Box.createHorizontalStrut(40), GridC.getc(2, y++).field());
                 cPanel.add(Box.createVerticalStrut(40), GridC.getc(1, y++).field());
                 cPanel.add(buttonPanel, GridC.getc(0, y).west().colspan(2).label());
                 return cPanel;
