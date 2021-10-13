@@ -569,6 +569,8 @@ class StockGlance implements HomePageView {
             } else {
                 JPanel sliderPanel = new JPanel(new GridLayout(0, 1));
                 JLabel sliderLabel = new JLabel("Interval in which a security price quote is usable", CENTER);
+                sliderLabel.setForeground(mdGUI.getColors().filterBarFG);
+                sliderLabel.setBackground(mdGUI.getColors().filterBarBG);
                 sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
                 JSlider windowSlider = new JSlider(HORIZONTAL, 1, 40, 7);
                 Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
@@ -587,6 +589,8 @@ class StockGlance implements HomePageView {
                 sliderPanel.add(windowSlider);
 
                 JCheckBox missingPriceCheckbox = new JCheckBox("Display securities with missing prices");
+                missingPriceCheckbox.setForeground(mdGUI.getColors().filterBarFG);
+                missingPriceCheckbox.setBackground(mdGUI.getColors().filterBarFG);
                 missingPriceCheckbox.setHorizontalAlignment(CENTER);
                 JPanel checkboxPanel = new JPanel(new GridLayout(0, 1));
                 checkboxPanel.add(missingPriceCheckbox);
@@ -597,6 +601,8 @@ class StockGlance implements HomePageView {
                 resetUI(securitySelectionList, missingPriceCheckbox, windowSlider);
 
                 JPanel buttonPanel = new JPanel(new GridLayout(1, 0));
+                buttonPanel.setForeground(mdGUI.getColors().filterBarFG);
+                buttonPanel.setBackground(mdGUI.getColors().filterBarBtnBG);
                 JButton resetButton = new JButton("Reset");
                 resetButton.addActionListener(e -> resetUI(securitySelectionList, missingPriceCheckbox, windowSlider));
                 JButton cancelButton = new JButton("Cancel");
