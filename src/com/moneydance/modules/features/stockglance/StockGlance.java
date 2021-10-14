@@ -572,21 +572,21 @@ class StockGlance implements HomePageView {
                 sliderLabel.setForeground(mdGUI.getColors().filterBarFG);
                 sliderLabel.setBackground(mdGUI.getColors().filterBarBG);
                 sliderLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-                JSlider windowSlider = new JSlider(HORIZONTAL, 1, 40, 7);
+                JSlider intervalSlider = new JSlider(HORIZONTAL, 1, 40, 7);
                 Hashtable<Integer, JLabel> labelTable = new Hashtable<>();
-                labelTable.put(slider_labels[0], new JLabel("day"));
-                labelTable.put(slider_labels[1], new JLabel("week"));
-                labelTable.put(slider_labels[2], new JLabel("month"));
-                labelTable.put(slider_labels[3], new JLabel("year"));
-                labelTable.put(slider_labels[4], new JLabel("\u221E"));
-                windowSlider.setLabelTable(labelTable);
-                windowSlider.setSnapToTicks(true);
-                windowSlider.setPaintTicks(true);
-                windowSlider.setPaintLabels(true);
-                Dimension d = windowSlider.getPreferredSize();
-                windowSlider.setPreferredSize(new Dimension((d.width * 2) / 1, d.height));
+                labelTable.put(sliderLabels[0], new JLabel("day"));
+                labelTable.put(sliderLabels[1], new JLabel("week"));
+                labelTable.put(sliderLabels[2], new JLabel("month"));
+                labelTable.put(sliderLabels[3], new JLabel("year"));
+                labelTable.put(sliderLabels[4], new JLabel("\u221E"));
+                intervalSlider.setLabelTable(labelTable);
+                intervalSlider.setSnapToTicks(true);
+                intervalSlider.setPaintTicks(true);
+                intervalSlider.setPaintLabels(true);
+                Dimension d = intervalSlider.getPreferredSize();
+                intervalSlider.setPreferredSize(new Dimension((d.width * 2) / 1, d.height));
                 sliderPanel.add(sliderLabel);
-                sliderPanel.add(windowSlider);
+                sliderPanel.add(intervalSlider);
 
                 JCheckBox missingPriceCheckbox = new JCheckBox("Display securities with missing prices");
                 missingPriceCheckbox.setForeground(mdGUI.getColors().filterBarFG);
@@ -598,16 +598,16 @@ class StockGlance implements HomePageView {
                 SecuritySelection securitySelectionList = new SecuritySelection(securitesList(this.table.getDisplayedSecurities()));
                 JScrollPane listScroller = new JScrollPane(securitySelectionList);
 
-                resetUI(securitySelectionList, missingPriceCheckbox, windowSlider);
+                resetUI(securitySelectionList, missingPriceCheckbox, intervalSlider);
 
                 JPanel buttonPanel = new JPanel(new GridLayout(1, 0));
                 buttonPanel.setForeground(mdGUI.getColors().filterBarFG);
                 buttonPanel.setBackground(mdGUI.getColors().filterBarBtnBG);
                 JButton resetButton = new JButton("Reset");
-                resetButton.addActionListener(e -> resetUI(securitySelectionList, missingPriceCheckbox, windowSlider));
+                resetButton.addActionListener(e -> resetUI(securitySelectionList, missingPriceCheckbox, intervalSlider));
                 JButton cancelButton = new JButton("Cancel");
                 cancelButton.addActionListener(e -> {
-                    resetUI(securitySelectionList, missingPriceCheckbox, windowSlider);
+                    resetUI(securitySelectionList, missingPriceCheckbox, intervalSlider);
                     this.frame.setVisible(false);
                 });
                 JButton okButton = new JButton("OK");
@@ -615,7 +615,7 @@ class StockGlance implements HomePageView {
                     Set<String> selectedSecurities = securitySelectionList.getSelected();
                     this.table.setDisplayedSecurities(selectedSecurities);
                     this.table.setAllowMissingPrices(missingPriceCheckbox.isSelected());
-                    this.table.setTimelySnapshotInterval(label2window(windowSlider.getValue()));
+                    this.table.setTimelySnapshotInterval(label2Interval(intervalSlider.getValue()));
                     this.frame.setVisible(false);
                 });
                 buttonPanel.add(resetButton);
@@ -655,10 +655,10 @@ class StockGlance implements HomePageView {
             return securities;
         }
         
-        private void resetUI(SecuritySelection securitySelectionList, JCheckBox missingPriceCheckbox, JSlider windowSlider) {
+        private void resetUI(SecuritySelection securitySelectionList, JCheckBox missingPriceCheckbox, JSlider intervalSlider) {
             securitySelectionList.setSelected(this.table.getDisplayedSecurities());
             missingPriceCheckbox.setSelected(this.table.getAllowMissingPrices());
-            windowSlider.setValue(this.table.getTimelySnapshotInterval());
+            intervalSlider.setValue(interval2Label(this.table.getTimelySnapshotInterval()));
         }
 
         @Override
@@ -674,22 +674,22 @@ class StockGlance implements HomePageView {
         // Sliders have a linear scale, but we want to allow a large range of days
         // (1..365). The numberic value of the slider will not correspond to the
         // days, but will be translated through this table.
-        final int[] slider_labels = { 1, 7, 14, 30, 40 };
-        final int[] date_windows = { 1, 7, 30, 365, INFINITY };
+        final int[] sliderLabels = { 1, 7, 14, 30, 40 };
+        final int[] sliderIntervals = { 1, 7, 30, 365, INFINITY };
 
-        private int window2lablel(int window) {
-            for (int i = 0; i < date_windows.length; i++) {
-                if (date_windows[i] == window) {
-                    return slider_labels[i];
+        private int interval2Label(int interval) {
+            for (int i = 0; i < sliderIntervals.length; i++) {
+                if (sliderIntervals[i] == interval) {
+                    return sliderLabels[i];
                 }
             }
-            return window;
+            return interval;
         }
 
-        private int label2window(int label) {
-            for (int i = 0; i < slider_labels.length; i++) {
-                if (slider_labels[i] == label) {
-                    return date_windows[i];
+        private int label2Interval(int label) {
+            for (int i = 0; i < sliderLabels.length; i++) {
+                if (sliderLabels[i] == label) {
+                    return sliderIntervals[i];
                 }
             }
             return label;
