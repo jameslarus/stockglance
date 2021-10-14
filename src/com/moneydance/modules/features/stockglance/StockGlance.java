@@ -361,14 +361,14 @@ class StockGlance implements HomePageView {
         private Double getAdjRelativeRate(CurrencyType curr, int asOfDate, int interval) {
             // getSnapshotForDate does not take into account the interval. It looks for a snap before
             // the date, and if none is found, it looks after the date.
-            // First look in interval before the date.
+            // First look in interval before the date: (T-I .. T]
             CurrencySnapshot snap = curr.getSnapshotForDate(asOfDate); 
-            if ((asOfDate - snap.getDateInt()) <= interval) {
+            if ((asOfDate - interval < snap.getDateInt()) && (snap.getDateInt() <= asOfDate)) {
                 return 1.0 / curr.adjustRateForSplitsInt(asOfDate, snap.getRate());
             }
-            // Now look in interval after the date.
+            // Now look in interval after the date: [T .. T+I]
             snap = curr.getSnapshotForDate(asOfDate + interval);
-            if ((asOfDate - snap.getDateInt()) <= interval) {
+            if ((asOfDate <= snap.getDateInt()) && (snap.getDateInt() < asOfDate + interval)) {
                 return 1.0 / curr.adjustRateForSplitsInt(asOfDate, snap.getRate());
             }
             return Double.NaN;
