@@ -364,12 +364,12 @@ class StockGlance implements HomePageView {
             // First look in interval before the date: (T-I .. T]
             CurrencySnapshot snap = curr.getSnapshotForDate(asOfDate); 
             if ((asOfDate - interval < snap.getDateInt()) && (snap.getDateInt() <= asOfDate)) {
-                return 1.0 / curr.adjustRateForSplitsInt(asOfDate, snap.getRate());
+                return 1.0 / curr.adjustRateForSplitsInt(snap.getDateInt(), snap.getRate());
             }
             // Now look in interval after the date: [T .. T+I]
             snap = curr.getSnapshotForDate(asOfDate + interval);
             if ((asOfDate <= snap.getDateInt()) && (snap.getDateInt() < asOfDate + interval)) {
-                return 1.0 / curr.adjustRateForSplitsInt(asOfDate, snap.getRate());
+                return 1.0 / curr.adjustRateForSplitsInt(snap.getDateInt(), snap.getRate());
             }
             return Double.NaN;
          }
