@@ -314,7 +314,7 @@ class StockGlance implements HomePageView {
                         entry.add((price - price7) / price7);
                         entry.add((price - price30) / price30);
                         entry.add((price - price365) / price365);
-    
+                        
                         data.add(entry);
                         rowCurrencies.add(curr);
                     }
@@ -361,15 +361,17 @@ class StockGlance implements HomePageView {
         private Double getAdjRelativeRate(CurrencyType curr, int asOfDate, int interval) {
             // getSnapshotForDate does not take into account the interval. It looks for a snap before
             // the date, and if none is found, it looks after the date.
+            CurrencySnapshot snap = curr.getSnapshotForDate(asOfDate);
+            int snapDate = snap.getDateInt();
+            //System.err.println(curr+" "+asOfDate+" "+interval+" "+snap);
             // First look in interval before the date: (T-I .. T]
-            CurrencySnapshot snap = curr.getSnapshotForDate(asOfDate); 
-            if ((asOfDate - interval < snap.getDateInt()) && (snap.getDateInt() <= asOfDate)) {
-                return 1.0 / curr.adjustRateForSplitsInt(snap.getDateInt(), snap.getRate());
+            if ((DateUtil.incrementDate(asOfDate, 0, 0, -interval) < snapDate) && (snapDate <= asOfDate)) {
+                return 1.0 / curr.adjustRateForSplitsInt(snapDate, snap.getRate());
             }
-            // Now look in interval after the date: [T .. T+I]
+            // Now look in interval after the date: [T .. T+I)
             snap = curr.getSnapshotForDate(asOfDate + interval);
-            if ((asOfDate <= snap.getDateInt()) && (snap.getDateInt() < asOfDate + interval)) {
-                return 1.0 / curr.adjustRateForSplitsInt(snap.getDateInt(), snap.getRate());
+            if ((asOfDate <= snapDate) && (snapDate < DateUtil.incrementDate(asOfDate, 0, 0, interval))) {
+                return 1.0 / curr.adjustRateForSplitsInt(snapDate, snap.getRate());
             }
             return Double.NaN;
          }
